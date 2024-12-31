@@ -10,6 +10,5 @@
 #
 # <vendor-prefix><TAB><Full name of vendor>
 
-mikron   GK Mikron
-syntacore Syntacore LLC
-
+mikron	GK Mikron
+syntacore	Syntacore LLC
