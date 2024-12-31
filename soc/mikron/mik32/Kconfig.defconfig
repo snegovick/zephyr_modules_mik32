@@ -1,0 +1,6 @@
+if SOC_MIK32
+
+config NUM_IRQS
+        default 32
+
+endif # SOC_MIK32
