@@ -25,7 +25,7 @@
 		#size-cells = <0>;
 		cpu0: cpu@0 {
 			reg = <0>;
-			clock-frequency = <90000000>;
+			clock-frequency = <32000000>;
 			compatible ="syntacore,scr1", "riscv,cpus";
 		};
 
@@ -55,8 +55,8 @@
 			interrupt-parent = < &CPU_intc >;
 		};
 
-		ipic: interrupt-controller@bf0 {
-			compatible = "riscv,scr-ipic";
+		epic: interrupt-controller@bf0 {
+			compatible = "mikron,epic";
 			#address-cells = <0>;
 			#interrupt-cells = <1>;
 			interrupt-controller;
@@ -74,6 +74,13 @@
 
 			interrupts = <0>;
 			interrupt-parent = < &ipic >;
+		};
+
+		eeprom: eeprom@1000000 {
+			compatible = "micron,eeprom-8k-blk";
+			reg = <0x01000000 0x2000>;
+			size = <8192>;
+			status = "disabled";
 		};
 	};
 };

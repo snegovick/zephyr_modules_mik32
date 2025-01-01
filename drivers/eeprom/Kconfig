@@ -1,0 +1,19 @@
+# EEPROM driver configuration options
+
+# Copyright (c) 2024
+# SPDX-License-Identifier: Apache-2.0
+
+if EEPROM
+
+module = EEPROM
+module-str = eeprom
+source "subsys/logging/Kconfig.template.log_config"
+
+config EEPROM_MIKRON_EEPROM_8K_BLK
+	bool "Mikron 8k blk EEPROM driver"
+	default y
+	depends on DT_HAS_MIKRON_EEPROM_8K_BLK_ENABLED
+	help
+	  Enable support for Mikron 8k blk EEPROM driver.
+
+endif # EEPROM

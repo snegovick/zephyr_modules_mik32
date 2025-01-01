@@ -1,0 +1,12 @@
+# Copyright (c) 2024
+# SPDX-License-Identifier: Apache-2.0
+
+description: Micron on-chip EEPROM
+
+compatible: "mikron,eeprom-8k-blk"
+
+include: [eeprom-base.yaml, pinctrl-device.yaml]
+
+properties:
+  reg:
+    required: true
