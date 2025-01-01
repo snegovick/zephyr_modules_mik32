@@ -65,15 +65,15 @@
 			reg = <0xbf0 0x10>;
 		};
 
-		uart: serial@ff010000 {
+		usart0: serial@ff010000 {
 			compatible = "ns16550";
 			reg-shift = < 2 >;
 			reg = <0xff010000 0x40>;
 			current-speed = <115200>;
 			status = "okay";
 
-			interrupts = <0>;
-			interrupt-parent = < &ipic >;
+			interrupts = <1>;
+			interrupt-parent = < &epic >;
 		};
 
 		eeprom: eeprom@1000000 {
