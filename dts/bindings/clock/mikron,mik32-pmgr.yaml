@@ -1,0 +1,34 @@
+# Copyright (c) 2024
+# SPDX-License-Identifier: Apache-2.0
+
+description: |
+  Mikron PowerManager is a multi-function peripheral in
+  charge of clock control (CCTL) for all SoC
+  peripherals. This binding represents the clock controller (CCTL).
+
+  To specify the clocks in a peripheral, the standard clocks property needs
+  to be used, e.g.:
+
+    gpioa: gpio@xxx {
+        ...
+        /* cell encodes RCU register offset and control bit position */
+        clocks = <&pmgr MIK32_CLOCK_GPIO0>;
+        ...
+    }
+
+  Predefined clock cells are available in
+  mik32-clocks.h header file.
+
+compatible: "mikron,mik32-pmgr"
+
+include: [clock-controller.yaml, base.yaml]
+
+properties:
+  reg:
+    required: true
+
+  "#clock-cells":
+    const: 1
+
+clock-cells:
+  - id

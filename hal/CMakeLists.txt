@@ -5,7 +5,10 @@ zephyr_library()
 
 if(CONFIG_SOC_MIK32)
 
-zephyr_include_directories(mik32/peripherals/Include)
+  zephyr_include_directories(mik32/peripherals/Include)
+  zephyr_include_directories(mik32/core/Include)
+  zephyr_include_directories(mik32/shared/include)
+  zephyr_include_directories(mik32/shared/periphery)
 
 zephyr_library_sources(mik32/peripherals/Source/mik32_hal.c)
 
@@ -16,4 +19,4 @@ zephyr_library_sources_ifdef(CONFIG_MIK32_HAL_GPIO    mik32/peripherals/Source/m
 zephyr_library_sources_ifdef(CONFIG_MIK32_HAL_I2C     mik32/peripherals/Source/mik32_hal_i2c.c)
 zephyr_library_sources_ifdef(CONFIG_MIK32_HAL_UART    mik32/peripherals/Source/mik32_hal_uart.c)
 
-endif
+endif()

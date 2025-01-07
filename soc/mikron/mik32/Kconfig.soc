@@ -1,5 +1,6 @@
 config SOC_MIK32
         bool
 
+
 config SOC
-        default "MIK32 Amur" if SOC_MIK32
+        default "MIK32" if SOC_MIK32

@@ -1,122 +1,143 @@
-/*
- * Copyright (c) 2016 Jean-Paul Etienne <fractalclone@gmail.com>
- * Contributors: 2018 Antmicro <www.antmicro.com>
- *
- * SPDX-License-Identifier: Apache-2.0
- */
+#define EXCEPTION_STACK_SPACE 32*4
+#define EXCEPTION_SAVED_REGISTERS 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31
 
-#include <zephyr/toolchain.h>
-#include <zephyr/linker/sections.h>
-#include <zephyr/arch/cpu.h>
-#include <zephyr/offsets.h>
-#include "asm_macros.inc"
+.globl _start, main
+.weak SmallSystemInit, SystemInit
 
-/* exports */
-GTEXT(__initialize)
-GTEXT(__reset)
+.globl trap_entry
+.globl trap_handler
+.globl raw_trap_handler
+.weak trap_handler, raw_trap_handler
 
-/* imports */
-GTEXT(z_prep_c)
-GTEXT(riscv_cpu_wake_flag)
-GTEXT(riscv_cpu_sp)
-GTEXT(arch_secondary_cpu_init)
+.altmacro
+.macro memcpy src_beg, src_end, dst, tmp_reg
+    LOCAL memcpy_1, memcpy_2
+    j    memcpy_2
+memcpy_1:
+    lw   \tmp_reg, (\src_beg)
+    sw   \tmp_reg, (\dst)
+    add  \src_beg, \src_beg, 4
+    add  \dst, \dst, 4
+memcpy_2:
+    bltu \src_beg, \src_end, memcpy_1
+.endm
 
-#if CONFIG_INCLUDE_RESET_VECTOR
-SECTION_FUNC(reset, __reset)
-	/*
-	 * jump to __initialize
-	 * use call opcode in case __initialize is far away.
-	 * This will be dependent on linker.ld configuration.
-	 */
-	call __initialize
-#endif /* CONFIG_INCLUDE_RESET_VECTOR */
+.macro memset dst_beg, dst_end, val_reg
+    LOCAL memset_1, memset_2
+    j    memset_2
+memset_1:
+    sw   \val_reg, (\dst_beg)
+    add  \dst_beg, \dst_beg, 4
+memset_2:
+    bltu \dst_beg, \dst_end, memset_1
+.endm
 
-/* use ABI name of registers for the sake of simplicity */
 
-/*
- * Remainder of asm-land initialization code before we can jump into
- * the C domain
- */
-SECTION_FUNC(TEXT, __initialize)
-	csrr a0, mhartid
-	li t0, CONFIG_RV_BOOT_HART
-	beq a0, t0, boot_first_core
-	j boot_secondary_core
+# la uses PC relative addressing (auipc instruction)
+# Explicit absolut addressing with lui instruction is used 
+# to allow startup code to be executed from any PC address
+# (la instruction equivalents are left in comments)
+    
+.macro la_abs reg, address
+    .option push
+    .option norelax
+    lui \reg, %hi(\address)
+    addi \reg, \reg, %lo(\address)
+    .option pop
+.endm
 
-boot_first_core:
 
-#ifdef CONFIG_FPU
-	/*
-	 * Enable floating-point.
-	 */
-	li t0, MSTATUS_FS_INIT
-	csrs mstatus, t0
+.macro jalr_abs return_reg, address
+    .option push
+    .option norelax
+    lui \return_reg, %hi(\address)
+    jalr \return_reg, %lo(\address)(\return_reg)
+    .option pop
+.endm
 
-	/*
-	 * Floating-point rounding mode set to IEEE-754 default, and clear
-	 * all exception flags.
-	 */
-	fscsr zero
-#endif
 
-#ifdef CONFIG_INIT_STACKS
-	/* Pre-populate all bytes in z_interrupt_stacks with 0xAA */
-	la t0, z_interrupt_stacks
-	/* Total size of all cores' IRQ stack */
-	li t1, __z_interrupt_all_stacks_SIZEOF
-	add t1, t1, t0
 
-	/* Populate z_interrupt_stacks with 0xaaaaaaaa */
-	li t2, 0xaaaaaaaa
-aa_loop:
-	sw t2, 0x00(t0)
-	addi t0, t0, 4
-	blt t0, t1, aa_loop
-#endif /* CONFIG_INIT_STACKS */
+.text
 
-	/*
-	 * Initially, setup stack pointer to
-	 * z_interrupt_stacks + __z_interrupt_stack_SIZEOF
-	 */
-	la sp, z_interrupt_stacks
-	li t0, __z_interrupt_stack_SIZEOF
-	add sp, sp, t0
+_start:
+    
+    li t0, 128000
+    start_loop_delay:
+    nop
+    addi t0, t0, -1
+    bnez t0, start_loop_delay
+    # Init stack and global pointer
+    #
+    la_abs  sp, __C_STACK_TOP__
+    la_abs  gp, _gp
+    
+    # Init data
+    #
+    la_abs  a1, __DATA_IMAGE_START__
+    la_abs  a2, __DATA_IMAGE_END__
+    la_abs  a3, __DATA_START__
+    memcpy  a1, a2, a3, t0
 
-#ifdef CONFIG_WDOG_INIT
-	call _WdogInit
-#endif
+    # Init ramfunc
+    #
+    la_abs  a1, __RAM_TEXT_IMAGE_START__
+    la_abs  a2, __RAM_TEXT_IMAGE_END__
+    la_abs  a3, __RAM_TEXT_START__
+    memcpy  a1, a2, a3, t0
+    
+    # Clear bss
+    #
+    la_abs  a1, __BSS_START__
+    la_abs  a2, __BSS_END__
+    memset a1, a2, zero
 
-	/*
-	 * Jump into C domain. z_prep_c zeroes BSS, copies rw data into RAM,
-	 * and then enters kernel z_cstart
-	 */
-	call z_prep_c
+    #ifdef MIK32V0
+    # Enable pad_config clocking
+    #
+    li t0, (1 << 3)
+    li t1, 0x50014
+    sw t0, (t1)
+    #endif
+    
+    jalr_abs ra, SmallSystemInit
+    jalr_abs ra, SystemInit
+    jalr_abs ra, main
+1:  wfi
+    j 1b
 
-boot_secondary_core:
-#if CONFIG_MP_MAX_NUM_CPUS > 1
-	la t0, riscv_cpu_wake_flag
-	li t1, -1
-	sr t1, 0(t0)
-	la t0, riscv_cpu_boot_flag
-	sr zero, 0(t0)
+    
+// Actions before main: none by default
+// (weak symbol here - may be redefined)
+SmallSystemInit:
+SystemInit:
+    ret
 
-wait_secondary_wake_flag:
-	la t0, riscv_cpu_wake_flag
-	lr t0, 0(t0)
-	bne a0, t0, wait_secondary_wake_flag
+.section .trap_text, "ax"
+// .org should be consistent with
+// default mtvec value (set in scr1_arch_description.svh)
+//.org 0xC0
+trap_entry:
+    j raw_trap_handler
 
-	/* Set up stack */
-	la t0, riscv_cpu_sp
-	lr sp, 0(t0)
+raw_trap_handler:
+    // Save registers
+    addi    sp, sp, -(EXCEPTION_STACK_SPACE)
+    .irp index, EXCEPTION_SAVED_REGISTERS
+        sw      x\index, 4*index(sp)
+    .endr
+    
+    // Call handler 
+    la      ra, trap_handler
+    jalr    ra
+    
+    // restore registers
+    .irp index, EXCEPTION_SAVED_REGISTERS
+        lw      x\index, 4*index(sp)
+    .endr
+    addi    sp, sp, EXCEPTION_STACK_SPACE
+    mret
 
-	la t0, riscv_cpu_boot_flag
-	li t1, 1
-	sr t1, 0(t0)
-	j arch_secondary_cpu_init
-#else
-	j loop_unconfigured_cores
-#endif
-
-loop_unconfigured_cores:
-	wfi
-	j loop_unconfigured_cores
+// Default handler: infinit loop
+// (weak symbol here - may be redefined)
+trap_handler:
+1:  j       1b

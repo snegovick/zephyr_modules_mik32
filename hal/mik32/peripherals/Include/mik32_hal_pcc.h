@@ -1,8 +1,8 @@
 #ifndef MIK32_HAL_PCC
 #define MIK32_HAL_PCC
 
-#include "wakeup.h"
-#include "power_manager.h"
+#include "../../shared/periphery/wakeup.h"
+#include "../../shared/periphery/power_manager.h"
 #include "mik32_hal_def.h"
 #include "mik32_memory_map.h"
 #include "mik32_hal.h"

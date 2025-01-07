@@ -1,0 +1,13 @@
+# Copyright (c) 2024
+# SPDX-License-Identifier: Apache-2.0
+
+description: |
+  MIK32 SPIFI Memory Controller.
+
+compatible: "mikron,spifi"
+
+include: [base.yaml]
+
+properties:
+  reg:
+    required: true

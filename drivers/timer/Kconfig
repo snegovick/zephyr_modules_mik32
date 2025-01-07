@@ -1,0 +1,10 @@
+# Timer driver configuration options
+
+# Copyright (c) 2024
+# SPDX-License-Identifier: Apache-2.0
+
+if SYS_CLOCK_EXISTS
+
+rsource "./Kconfig.*"
+
+endif # SYS_CLOCK_EXISTS

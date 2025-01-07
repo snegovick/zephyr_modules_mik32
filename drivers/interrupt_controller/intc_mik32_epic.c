@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#define DT_DRV_COMPAT mikron_mik32_epic
+#define DT_DRV_COMPAT mikron_epic
 
 #include <zephyr/arch/cpu.h>
 #include <zephyr/init.h>

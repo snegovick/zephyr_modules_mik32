@@ -1,19 +1,11 @@
 /*
- * Copyright (C) 2022, Syntacore Ltd.
- * TODO: Contributed 2024 ...
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *     http://www.apache.org/licenses/LICENSE-2.0
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Copyright (C) 2024
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 #include <mem.h>
+#include <mikron/mik32/mik32v2.h>
+#include <mikron/mik32/mik32-clocks.h>
 
 /dts-v1/;
 
@@ -26,7 +18,8 @@
 		cpu0: cpu@0 {
 			reg = <0>;
 			clock-frequency = <32000000>;
-			compatible ="syntacore,scr1", "riscv,cpus";
+			compatible ="syntacore,scr1", "riscv";
+			riscv,isa = "rv32imc_zicsr_zifencei";
 		};
 
 		CPU_intc: interrupt-controller {
@@ -45,7 +38,8 @@
 	soc {
 		#address-cells = <1>;
 		#size-cells = <1>;
-		compatible = "syntacore,scr1-soc";
+		compatible = "simple-bus";
+		interrupt-parent = <&epic>;
 		ranges;
 
 		mtimer: timer@f0040000 {
@@ -65,22 +59,81 @@
 			reg = <0xbf0 0x10>;
 		};
 
-		usart0: serial@ff010000 {
-			compatible = "ns16550";
-			reg-shift = < 2 >;
-			reg = <0xff010000 0x40>;
-			current-speed = <115200>;
+		pmgr: clock-controller@50000 {
+			compatible = "mikron,mik32-pmgr";
+			reg = <0x00050000 0x400>;
+			#clock-cells = <1>;
 			status = "okay";
+		};
 
-			interrupts = <1>;
-			interrupt-parent = < &epic >;
+		usart0: serial@81400 {
+			compatible = "mikron,usart";
+			reg = <0x00081400 0x30>;
+			current-speed = <115200>;
+			clocks = <&pmgr MIK32_CLOCK_USART0>;
+			status = "disabled";
+
+			/* interrupts = <1>; */
+			/* interrupt-parent = < &epic >; */
+		};
+
+		usart1: serial@81800 {
+			compatible = "mikron,usart";
+			reg = <0x00081800 0x30>;
+			current-speed = <115200>;
+			clocks = <&pmgr MIK32_CLOCK_USART1>;
+			status = "disabled";
+
+			/* interrupts = <2>; */
+			/* interrupt-parent = < &epic >; */
 		};
 
 		eeprom0: eeprom@1000000 {
-			compatible = "micron,eeprom-8k-blk";
+			compatible = "mikron,eeprom-8k-blk";
 			reg = <0x01000000 0x2000>;
 			size = <8192>;
 			status = "disabled";
+		};
+
+		nor0: spifi@80000000 {
+			compatible = "mikron,spifi";
+			reg = <0x80000000 0x20000>;
+			status = "disabled";
+		};
+
+		pinctrl: pin-controller@84000 {
+			compatible = "mikron,mik32-pinctrl-af";
+			reg = <0x00084000 0xc00>;
+			#address-cells = <1>;
+			#size-cells = <1>;
+			status = "okay";
+
+			gpioa: gpio@84000 {
+				compatible = "mikron,mik32-gpio";
+				reg = <0x00084000 0x400>;
+				gpio-controller;
+				#gpio-cells = <2>;
+				clocks = <&pmgr MIK32_CLOCK_GPIO0>;
+				status = "disabled";
+			};
+
+			gpiob: gpio@84400 {
+				compatible = "mikron,mik32-gpio";
+				reg = <0x00084400 0x400>;
+				gpio-controller;
+				#gpio-cells = <2>;
+				clocks = <&pmgr MIK32_CLOCK_GPIO1>;
+				status = "disabled";
+			};
+
+			gpioc: gpio@84800 {
+				compatible = "mikron,mik32-gpio";
+				reg = <0x00084800 0x400>;
+				gpio-controller;
+				#gpio-cells = <2>;
+				clocks = <&pmgr MIK32_CLOCK_GPIO2>;
+				status = "disabled";
+			};
 		};
 	};
 };

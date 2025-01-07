@@ -1,0 +1,9 @@
+# Copyright (c) 2022 Teslabs Engineering S.L.
+# SPDX-License-Identifier: Apache-2.0
+
+config CLOCK_CONTROL_MIK32
+	bool "MIK32 clock control (PowerManager)"
+	default y
+	depends on DT_HAS_MIKRON_MIK32_PMGR_ENABLED
+	help
+	  Enable driver for Mikron PowerManager.

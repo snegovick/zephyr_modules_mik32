@@ -1,0 +1,9 @@
+description: MIKRON MIK32 UART
+
+compatible: "mikron,usart"
+
+include: [uart-controller.yaml, pinctrl-device.yaml]
+
+properties:
+  reg:
+    required: true
