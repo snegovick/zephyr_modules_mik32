@@ -1,6 +1,8 @@
 # Copyright (c) 2024
 # SPDX-License-Identifier: Apache-2.0
 
+add_subdirectory(interrupt_controller)
+
 add_subdirectory_ifdef(CONFIG_EEPROM eeprom)
 add_subdirectory_ifdef(CONFIG_MEMC memc)
 add_subdirectory_ifdef(CONFIG_SYS_CLOCK_EXISTS timer)

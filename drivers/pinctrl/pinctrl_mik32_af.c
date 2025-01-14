@@ -5,7 +5,7 @@
  */
 
 #include <zephyr/drivers/clock_control.h>
-#include <drivers/clock_control/mik32.h>
+#include <zephyr/drivers/clock_control/mik32.h>
 #include <zephyr/drivers/pinctrl.h>
 
 #include <soc/mikron/mik32/soc.h>
@@ -62,7 +62,10 @@ static const uint16_t mik32_port_clkids[] = {
 static void pinctrl_configure_pin(pinctrl_soc_pin_t pin)
 {
 	uint8_t port_idx;
-	uint32_t port, pin_num, af;
+	uint32_t port;
+	uint32_t pin_num;
+	uint32_t af;
+	uint32_t dir;
 	uint16_t clkid;
 	uint16_t strength;
 
@@ -71,12 +74,12 @@ static void pinctrl_configure_pin(pinctrl_soc_pin_t pin)
 
 	clkid = mik32_port_clkids[port_idx];
 	port = mik32_port_addrs[port_idx];
-	pin_num = BIT(MIK32_PIN_GET(pin));
+	pin_num = MIK32_PIN_GET(pin);
 	af = MIK32_AF_GET(pin);
 	strength = MIK32_STRENGTH_GET(pin);
+	dir = MIK32_DIR_GET(pin);
 
 	(void)clock_control_on(MIK32_CLOCK_CONTROLLER, (clock_control_subsys_t)&clkid);
-
 
 	uint32_t pupd;
 	uint32_t ds;
@@ -95,11 +98,16 @@ static void pinctrl_configure_pin(pinctrl_soc_pin_t pin)
 		cfg &= ~(0x3 << (pin_num * 2));
 		// set af
 		cfg |= (af << (pin_num * 2));
+		if (dir == MIK32_DIR_OUT) {
+			dirout = (1 << pin_num);
+		} else if (dir == MIK32_DIR_IN) {
+			dirin = (1 << pin_num);
+		}
 	} else {
 		// set mode ANALOG
 		cfg |= (0x3 << (pin_num * 2));
 		// set direction input
-		dirin |= (1 << pin_num);
+		dirin = (1 << pin_num);
 	}
 
 	switch (MIK32_PUPD_GET(pin)) {
@@ -134,7 +142,7 @@ static void pinctrl_configure_pin(pinctrl_soc_pin_t pin)
 
 	MIK32_PAD_PUPD(port) = pupd;
 	MIK32_PAD_CFG(port) = cfg;
-	MIK32_PAD_DS(port) = cfg;
+	MIK32_PAD_DS(port) = ds;
 	MIK32_GPIO_DIRIN(port) = dirin;
 	MIK32_GPIO_DIROUT(port) = dirout;
 }

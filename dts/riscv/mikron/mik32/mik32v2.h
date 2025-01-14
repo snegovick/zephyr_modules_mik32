@@ -2,7 +2,7 @@
  * SPDX-License-Identifier: Apache 2.0
  */
 
-#include "mik32-af.h"
+#include <zephyr/dt-bindings/pinctrl/mik32-af.h>
 
 /* I2C1_SDA */
 #define I2C1_SDA_PB12 \
@@ -18,11 +18,11 @@
 
 /* USART1_TX */
 #define USART1_TX_PB9 \
-	MIK32_PINMUX_AF('B', 9, AF1)
+	(MIK32_PINMUX_AF('B', 9, AF1) | (1<<28))
 
 /* USART1_RX */
 #define USART1_RX_PB8 \
-	MIK32_PINMUX_AF('B', 8, AF1)
+	(MIK32_PINMUX_AF('B', 8, AF1) | (2<<28))
 
 /* SPI1_NSS3 */
 #define SPI1_NSS3_PB7 \

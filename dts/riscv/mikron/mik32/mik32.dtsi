@@ -4,8 +4,9 @@
  */
 
 #include <mem.h>
+#include <zephyr/dt-bindings/gpio/gpio.h>
 #include <mikron/mik32/mik32v2.h>
-#include <mikron/mik32/mik32-clocks.h>
+#include <zephyr/dt-bindings/clock/mik32-clocks.h>
 
 /dts-v1/;
 
@@ -42,21 +43,27 @@
 		interrupt-parent = <&epic>;
 		ranges;
 
-		mtimer: timer@f0040000 {
+		mtimer: timer@490000 {
 			compatible = "syntacore,machine-timer";
-			reg = <0xf0040000 0x1000>;
+			reg = <0x00490000 0x1000>;
 			interrupts = <7>;
 			interrupt-parent = < &CPU_intc >;
 		};
 
-		epic: interrupt-controller@bf0 {
+		epic: interrupt-controller@50400 {
 			compatible = "mikron,epic";
 			#address-cells = <0>;
 			#interrupt-cells = <1>;
 			interrupt-controller;
-			interrupts-extended = <&CPU_intc 11>;
 
-			reg = <0xbf0 0x10>;
+			reg = <0x00050400 0x400>;
+		};
+
+		gpio_irq: gpio-irq@84c00 {
+			compatible = "mikron,mik32-gpio-irq";
+			reg = <0x00084C00 0x400>;
+			clocks = <&pmgr MIK32_CLOCK_GPIO_IRQ>;
+			status = "okay";
 		};
 
 		pmgr: clock-controller@50000 {

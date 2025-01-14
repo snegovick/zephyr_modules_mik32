@@ -1,8 +1,11 @@
 /*
  * Copyright (c) 2018-2023 Intel Corporation
+ * Copyright (c) 2025 Escave
  *
  * SPDX-License-Identifier: Apache-2.0
  */
+
+// Based on zephyr std riscv_machine_timer.c
 
 #include <limits.h>
 
@@ -13,6 +16,11 @@
 #include <zephyr/spinlock.h>
 #include <zephyr/irq.h>
 
+#include <hal/mik32/shared/periphery/scr1_timer.h>
+#include <hal/mik32/shared/include/mik32_memory_map.h>
+#include <hal/mik32/shared/include/scr1_csr_encoding.h>
+#include <soc/mikron/mik32/soc.h>
+
 /* syntacore,machine-timer*/
 #if DT_HAS_COMPAT_STATUS_OKAY(syntacore_machine_timer)
 #define DT_DRV_COMPAT syntacore_machine_timer
@@ -21,7 +29,7 @@
 #define MTIMEDIV_REG	(DT_INST_REG_ADDR_U64(0) + 4)
 #define MTIME_REG	(DT_INST_REG_ADDR_U64(0) + 8)
 #define MTIMECMP_REG	(DT_INST_REG_ADDR_U64(0) + 16)
-#define TIMER_IRQN	DT_INST_IRQN(0)
+//#define TIMER_IRQN	DT_INST_IRQN(0)
 #endif
 
 #define CYC_PER_TICK (uint32_t)(sys_clock_hw_cycles_per_sec() \
@@ -30,6 +38,8 @@
 /* the unsigned long cast limits divisions to native CPU register width */
 #define cycle_diff_t unsigned long
 #define CYCLE_DIFF_MAX (~(cycle_diff_t)0)
+
+#define MIE_MTIE                    (0x1 << 7)
 
 /*
  * We have two constraints on the maximum number of cycles we can wait for.
@@ -61,24 +71,13 @@ static uint64_t last_count;
 static uint64_t last_ticks;
 static uint32_t last_elapsed;
 
-#if defined(CONFIG_TEST)
-const int32_t z_sys_timer_irq_for_test = TIMER_IRQN;
-#endif
-
 static uintptr_t get_hart_mtimecmp(void)
 {
-#if DT_HAS_COMPAT_STATUS_OKAY(syntacore_machine_timer)
 	return MTIMECMP_REG;
-#else
-	return MTIMECMP_REG + (arch_proc_id() * 8);
-#endif
 }
 
 static void set_mtimecmp(uint64_t time)
 {
-#ifdef CONFIG_64BIT
-	*(volatile uint64_t *)get_hart_mtimecmp() = time;
-#else
 	volatile uint32_t *r = (uint32_t *)get_hart_mtimecmp();
 
 	/* Per spec, the RISC-V MTIME/MTIMECMP registers are 64 bit,
@@ -90,7 +89,6 @@ static void set_mtimecmp(uint64_t time)
 	r[1] = 0xffffffff;
 	r[0] = (uint32_t)time;
 	r[1] = (uint32_t)(time >> 32);
-#endif
 }
 
 static void set_divider(void)
@@ -103,9 +101,6 @@ static void set_divider(void)
 
 static uint64_t mtime(void)
 {
-#ifdef CONFIG_64BIT
-	return *(volatile uint64_t *)MTIME_REG;
-#else
 	volatile uint32_t *r = (uint32_t *)MTIME_REG;
 	uint32_t lo, hi;
 
@@ -116,13 +111,10 @@ static uint64_t mtime(void)
 	} while (r[1] != hi);
 
 	return (((uint64_t)hi) << 32) | lo;
-#endif
 }
 
-static void timer_isr(const void *arg)
+void scr1_timer_isr()
 {
-	ARG_UNUSED(arg);
-
 	k_spinlock_key_t key = k_spin_lock(&lock);
 
 	uint64_t now = mtime();
@@ -185,34 +177,26 @@ uint32_t sys_clock_elapsed(void)
 
 uint32_t sys_clock_cycle_get_32(void)
 {
-	return ((uint32_t)mtime()) << CONFIG_RISCV_SCR1_MACHINE_TIMER_SYSTEM_CLOCK_DIVIDER;
+	return ((uint32_t)mtime()) * (CONFIG_RISCV_SCR1_MACHINE_TIMER_SYSTEM_CLOCK_DIVIDER + 1);
 }
 
 uint64_t sys_clock_cycle_get_64(void)
 {
-	return mtime() << CONFIG_RISCV_SCR1_MACHINE_TIMER_SYSTEM_CLOCK_DIVIDER;
+	return mtime() * (CONFIG_RISCV_SCR1_MACHINE_TIMER_SYSTEM_CLOCK_DIVIDER + 1);
 }
 
 static int sys_clock_driver_init(void)
 {
-
 	set_divider();
 
-	IRQ_CONNECT(TIMER_IRQN, 0, timer_isr, NULL, 0);
 	last_ticks = mtime() / CYC_PER_TICK;
 	last_count = last_ticks * CYC_PER_TICK;
 	set_mtimecmp(last_count + CYC_PER_TICK);
-	irq_enable(TIMER_IRQN);
+
+	SCR1_TIMER->TIMER_CTRL |= SCR1_TIMER_CTRL_ENABLE_M;
+	set_csr(mie, MIE_MTIE);
 	return 0;
 }
-
-#ifdef CONFIG_SMP
-void smp_timer_init(void)
-{
-	set_mtimecmp(last_count + CYC_PER_TICK);
-	irq_enable(TIMER_IRQN);
-}
-#endif
 
 SYS_INIT(sys_clock_driver_init, PRE_KERNEL_2,
 	 CONFIG_SYSTEM_CLOCK_INIT_PRIORITY);

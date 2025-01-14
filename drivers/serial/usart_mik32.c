@@ -25,6 +25,7 @@ struct usart_mik32_config {
 };
 
 struct usart_mik32_data {
+	uint32_t empty;
 };
 
 static int usart_mik32_init(const struct device *dev)
@@ -33,7 +34,7 @@ static int usart_mik32_init(const struct device *dev)
 	UART_TypeDef *regs = config->regs;
 	uint32_t ctrl1 = UART_CONTROL1_TE_M | UART_CONTROL1_RE_M | UART_CONTROL1_UE_M;
 	uint32_t clock_rate;
-	clock_control_subsys_t clock_sys = (clock_control_subsys_t *)(uintptr_t)config->clock_id;
+	clock_control_subsys_t clock_sys = (clock_control_subsys_t)&config->clock_id;
 	uint32_t divn;
 	int err;
 
@@ -59,9 +60,9 @@ static int usart_mik32_init(const struct device *dev)
 	}
 
 	regs->DIVIDER = divn;
-	regs->CONTROL1 = ctrl1;
 	regs->CONTROL2 = 0;
 	regs->CONTROL3 = 0;
+	regs->CONTROL1 = ctrl1;
 
 	err = pinctrl_apply_state(config->pin_cfg, PINCTRL_STATE_DEFAULT);
 	if (err != 0) {
@@ -76,7 +77,9 @@ static int usart_mik32_poll_in(const struct device *dev, unsigned char *ch)
 	const struct usart_mik32_config *config = dev->config;
 	UART_TypeDef *regs = config->regs;
 
-	if ((regs->FLAGS & UART_FLAGS_RXNE_M) == 0) {
+	uint32_t flags = regs->FLAGS;
+
+	if ((flags & UART_FLAGS_RXNE_M) == 0) {
 		return -1;
 	}
 

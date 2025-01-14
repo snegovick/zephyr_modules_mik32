@@ -6,6 +6,7 @@
 // SCR1 External Architecture Specification
 // (3.2.4. Machine Mode Standard CSRs)
 
+#if 0
 #define MVENDORID_VALUE             0x0
 #define MARCHID_VALUE               0x8
 #define MIMPID_VALUE                0x19083000
@@ -76,5 +77,6 @@
 // MCOUNTEN
 #define MCOUNTEN_CY                 (1 << 0)
 #define MCOUNTEN_IR                 (1 << 2)
+#endif // #if 0
 
 #endif

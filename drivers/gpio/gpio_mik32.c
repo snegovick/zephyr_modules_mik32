@@ -12,9 +12,11 @@
 
 #include <zephyr/drivers/gpio/gpio_utils.h>
 
-#include <hal/mik32/peripherals/Include/mik32_hal_gpio.h>
 #include <hal/mik32/peripherals/Include/mik32_hal_irq.h>
-#include <include/drivers/clock_control/mik32.h>
+#include <zephyr/drivers/clock_control/mik32.h>
+#include <zephyr/drivers/interrupt_controller/mik32_gpio_irq.h>
+#include <hal/mik32/shared/include/mik32_memory_map.h>
+#include <hal/mik32/shared/periphery/epic.h>
 #include <soc/mikron/mik32/soc.h>
 
 #define GPIO_IRQ_NODE DT_NODELABEL(gpio_irq)
@@ -30,7 +32,6 @@ struct gpio_mik32_config {
 struct gpio_mik32_data {
 	struct gpio_driver_data common;
 	sys_slist_t callbacks;
-	uint32_t irq_line_mux;
 };
 
 /**
@@ -71,9 +72,9 @@ static inline int gpio_mik32_configure(const struct device *port, gpio_pin_t pin
 		dirout |= (1 << pin);
 
 		if ((flags & GPIO_OUTPUT_INIT_HIGH) != 0U) {
-			GPIO_STATE(config->reg) = BIT(pin);
+			MIK32_GPIO_STATE(config->reg) = BIT(pin);
 		} else if ((flags & GPIO_OUTPUT_INIT_LOW) != 0U) {
-			GPIO_CLEAR(config->reg) = BIT(pin);
+			MIK32_GPIO_CLEAR(config->reg) = BIT(pin);
 		}
 	} else if ((flags & GPIO_INPUT) != 0U) {
 		// set mode GPIO
@@ -131,7 +132,7 @@ static int gpio_mik32_port_set_bits_raw(const struct device *port,
 {
 	const struct gpio_mik32_config *config = port->config;
 
-	MIK32_GPIO_STATE(config->reg) = value;
+	MIK32_GPIO_STATE(config->reg) = pins;
 
 	return 0;
 }
@@ -159,109 +160,72 @@ static int gpio_mik32_port_toggle_bits(const struct device *port,
 	return 0;
 }
 
-static int __gpio_pin_to_mux_line(struct gpio_mik32_data *data, uint8_t port, uint8_t pin, uint8_t *muxline, uint8_t *muxval) {
-	if (((port < 2) && (pin > 15)) || ((port == 2) && (pin > 7)) || (port > 2)) {
-		return -ENOTSUP;
-	}
-	unsigned int offset = pin + (port * 16);
-	unsigned int mux_val = offset / 8;
-	unsigned int mux_line = offset % 8;
-
-	if (data->irq_line_mux & (0xf << (mux_line * 4)) == 0) {
-		*muxval = mux_val;
-		*muxline = mux_line;
-		return 0;
-	}
-	// Primary mux line is busy, check secondary
-	mux_val += 5;
-	mux_line = (mux_line >= 4 ? mux_line - 4 : mux_line + 4);
-	if (data->irq_line_mux & (0xf << (mux_line * 4)) == 0) {
-		*muxval = mux_val;
-		*muxline = mux_line;
-		return 0;
-	}
-	return -ERANGE;
-}
-
-static int __set_irq_mux_line(struct gpio_mik32_data *data, uint8_t mux_line, uint8_t mux_val) {
-	data->irq_line_mux &= ~(0xf << (mux_line * 4));
-	data->irq_line_mux |= (mux_val << (mux_line * 4));
-	MIK32_GPIO_IRQ_LINE_MUX = data->irq_line_mux;
-}
-
-static int __clear_irq_mux_line(struct gpio_mik32_data *data, uint8_t mux_line) {
-	data->irq_line_mux &= ~(0xf << (mux_line * 4));
-	MIK32_GPIO_IRQ_LINE_MUX = data->irq_line_mux;
-}
-
 static int gpio_mik32_pin_interrupt_configure(const struct device *port,
 					     gpio_pin_t pin,
 					     enum gpio_int_mode mode,
 					     enum gpio_int_trig trig)
 {
+#if IS_ENABLED(CONFIG_MIK32_GPIO_IRQ)
 	uint8_t mux_line = 0;
 	uint8_t mux_val = 0;
-	unsigned int gpion = MIK32_GPIO_NUMBER(port->reg);
-	struct gpio_mik32_data *data = port->data;
-	int ret = __gpio_pin_to_mux_line(data, gpion, pin, &mux_line, &mux_val);
+	const struct gpio_mik32_config *config = port->config;
+	//struct gpio_mik32_data *data = port->data;
+	unsigned int gpion = MIK32_GPIO_NUMBER(config->reg);
+	int ret = mik32_gpio_pin_to_mux_line(gpion, pin, &mux_line, &mux_val);
 	if (ret < 0) {
 		return ret;
 	}
 	if (mode == GPIO_INT_MODE_DISABLED) {
-		__clear_irq_mux_line(data, mux_line);
-		MIK32_GPIO_IRQ_ENABLE_CLEAR = (1 << mux_line);
-		MIK32_GPIO_IRQ_LEVEL = (1 << mux_line);
-		MIK32_GPIO_IRQ_LEVEL_CLEAR = (1 << mux_line);
-		MIK32_GPIO_IRQ_ANY_EDGE_CLEAR = (1 << mux_line);
+		mik32_gpio_irq_disable(mux_line);
+		mik32_clear_irq_mux_line(mux_line);
+		(void)mik32_gpio_irq_configure(mux_line, NULL, NULL);
 	} else if (mode == GPIO_INT_MODE_EDGE) {
-		__set_irq_mux_line(data, mux_line, mux_val);
-		MIK32_GPIO_IRQ_EDGE = (1 << mux_line);
+		mik32_set_irq_mux_line(mux_line, mux_val);
+		(void)mik32_gpio_irq_configure(mux_line, gpio_mik32_isr, (void *)port);
 
 		switch (trig) {
 		case GPIO_INT_TRIG_LOW:
-			MIK32_GPIO_IRQ_ANY_EDGE_CLEAR = (1 << mux_line);
-			MIK32_GPIO_IRQ_LEVEL_CLEAR = (1 << mux_line);
+			mik32_gpio_irq_trigger_level(mux_line, MIK32_GPIO_IRQ_TRIG_FALLING);
 			break;
 		case GPIO_INT_TRIG_HIGH:
-			GPIO_IRQ_ANY_EDGE_CLEAR = (1 << mux_line);
-			GPIO_IRQ_LEVEL_SET = (1 << mux_line);
+			mik32_gpio_irq_trigger_level(mux_line, MIK32_GPIO_IRQ_TRIG_RISING);
 			break;
 		case GPIO_INT_TRIG_BOTH:
-			GPIO_IRQ_ANY_EDGE_SET = (1 << mux_line);
+			mik32_gpio_irq_trigger_level(mux_line, MIK32_GPIO_IRQ_TRIG_BOTH);
 			break;
 		default:
 			return -ENOTSUP;
 		}
 
-		MIK32_GPIO_IRQ_ENABLE_SET = (1 << mux_line);
+		mik32_gpio_irq_enable(mux_line);
 		HAL_EPIC_MaskEdgeSet(HAL_EPIC_GPIO_IRQ_MASK);
 	} else if (mode == GPIO_INT_MODE_LEVEL) {
-		__set_irq_mux_line(data, mux_line, mux_val);
-		MIK32_GPIO_IRQ_LEVEL = (1 << mux_line);
+		mik32_set_irq_mux_line(mux_line, mux_val);
+		(void)mik32_gpio_irq_configure(mux_line, gpio_mik32_isr, (void *)port);
 
 		switch (trig) {
 		case GPIO_INT_TRIG_LOW:
-			MIK32_GPIO_IRQ_ANY_EDGE_CLEAR = (1 << mux_line);
-			MIK32_GPIO_IRQ_LEVEL_CLEAR = (1 << mux_line);
+			mik32_gpio_irq_trigger_level(mux_line, MIK32_GPIO_IRQ_TRIG_LOW);
 			break;
 		case GPIO_INT_TRIG_HIGH:
-			MIK32_GPIO_IRQ_ANY_EDGE_CLEAR = (1 << mux_line);
-			MIK32_GPIO_IRQ_LEVEL_SET = (1 << mux_line);
+			mik32_gpio_irq_trigger_level(mux_line, MIK32_GPIO_IRQ_TRIG_HIGH);
 			break;
 		case GPIO_INT_TRIG_BOTH:
-			MIK32_GPIO_IRQ_ANY_EDGE_SET = (1 << mux_line);
+			mik32_gpio_irq_trigger_level(mux_line, MIK32_GPIO_IRQ_TRIG_BOTH);
 			break;
 		default:
 			return -ENOTSUP;
 		}
-
-		MIK32_GPIO_IRQ_ENABLE_SET = (1 << mux_line);
+		mik32_gpio_irq_enable(mux_line);
 		HAL_EPIC_MaskLevelSet(HAL_EPIC_GPIO_IRQ_MASK);
 	} else {
 		return -ENOTSUP;
 	}
 
 	return 0;
+#else
+	return -ENOTSUP;
+#endif
 }
 
 static int gpio_mik32_manage_callback(const struct device *dev,
@@ -307,7 +271,6 @@ static int gpio_mik32_init(const struct device *port)
 	};								\
 									\
 	static struct gpio_mik32_data gpio_mik32_data##n = {		\
-		.irq_line_mux = 0,					\
 	};								\
 									\
 	DEVICE_DT_INST_DEFINE(n, gpio_mik32_init, NULL, &gpio_mik32_data##n, \

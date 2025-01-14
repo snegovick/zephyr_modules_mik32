@@ -1,0 +1,9 @@
+# Copyright (c) 2024 Escave
+# SPDX-License-Identifier: Apache-2.0
+
+config MIK32_GPIO_IRQ
+	bool "MIK32 GPIO Interrupts Controller"
+	default y
+	depends on DT_HAS_MIKRON_MIK32_GPIO_IRQ_ENABLED
+	help
+	  Enable the MIKRON MIK32 GPIO Interrupts Controller driver.

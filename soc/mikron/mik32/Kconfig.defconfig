@@ -4,6 +4,33 @@ config NUM_IRQS
         default 32
 
 config SYS_CLOCK_HW_CYCLES_PER_SEC
-	default 32768
+	default 10000
+
+config SYS_CLOCK_TICKS_PER_SEC
+	default 10
+
+# config ARCH_IRQ_VECTOR_TABLE_ALIGN
+# 	default 512
+
+#config RISCV_TRAP_HANDLER_ALIGNMENT
+#	default 128
+
+# config FLASH_LOAD_OFFSET
+# 	default c0
+
+config GEN_ISR_TABLES
+	default y
+
+config RISCV_RESERVED_IRQ_ISR_TABLES_OFFSET
+	default 0
+
+config OUTPUT_DISASSEMBLY
+	default y
+
+config BUILD_OUTPUT_HEX_GAP_FILL
+	default y
+
+config DEBUG
+	default y
 
 endif # SOC_MIK32

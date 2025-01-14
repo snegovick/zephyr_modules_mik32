@@ -12,7 +12,7 @@
 
 
 #ifndef __ASSEMBLER__
-    #include <inttypes.h>
+    #include <stdint.h>
 
     typedef struct
     {

@@ -12,7 +12,7 @@
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/clock_control.h>
-#include <dts/riscv/mikron/mik32/mik32-clocks.h>
+#include <zephyr/dt-bindings/clock/mik32-clocks.h>
 
 
 /** Power manager offset (from id cell) */
@@ -84,7 +84,9 @@ static int clock_control_mik32_get_rate(const struct device *dev,
 	uint32_t ahb_psc = sys_read32(config->base + MIK32_PMGR_DIV_AHB_OFFSET);
 	uint32_t ahb_rate = CPU_FREQ / (ahb_psc + 1);
 
-	switch (MIK32_CLOCK_ID_OFFSET(id)) {
+	uint32_t clk_offt = MIK32_CLOCK_ID_OFFSET(id);
+
+	switch (clk_offt) {
 	case MIK32_PMGR_AHB_SET_OFFSET:
 		*rate = ahb_rate;
 		break;

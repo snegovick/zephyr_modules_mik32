@@ -1,6 +1,5 @@
 config SOC_MIK32
         bool
 
-
 config SOC
         default "MIK32" if SOC_MIK32
