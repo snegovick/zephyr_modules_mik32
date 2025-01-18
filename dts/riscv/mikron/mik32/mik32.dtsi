@@ -48,6 +48,7 @@
 			reg = <0x00490000 0x1000>;
 			interrupts = <7>;
 			interrupt-parent = < &CPU_intc >;
+			status = "okay";
 		};
 
 		epic: interrupt-controller@50400 {
@@ -57,6 +58,7 @@
 			interrupt-controller;
 
 			reg = <0x00050400 0x400>;
+			status = "okay";
 		};
 
 		gpio_irq: gpio-irq@84c00 {
