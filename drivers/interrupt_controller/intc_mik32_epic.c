@@ -10,32 +10,53 @@
 #include <zephyr/init.h>
 #include <zephyr/irq.h>
 #include <zephyr/kernel.h>
+#include <hal/mik32/peripherals/Include/mik32_hal_irq.h>
+#include <hal/mik32/shared/include/mik32_memory_map.h>
+#include <hal/mik32/shared/periphery/epic.h>
+#include <hal/mik32/shared/periphery/scr1_timer.h>
+#include <zephyr/arch/riscv/irq.h>
 
-//#define SEVONPEND (1 << 4)
-//#define WFITOWFE  (1 << 3)
+#define MIE_MEIE                    (0x1 << 11)
+#define MIP_MTIP                    (0x1 << 7)
+#define MIP_MEIP                    (0x1 << 11)
 
 void arch_irq_enable(unsigned int irq)
 {
-	PFIC->IENR[irq / 32] = 1 << (irq % 32);
+	EPIC->MASK_LEVEL_SET = 1<<irq;
 }
 
 void arch_irq_disable(unsigned int irq)
 {
-	PFIC->IRER[irq / 32] |= 1 << (irq % 32);
+	EPIC->MASK_LEVEL_CLEAR = 1<<irq;
 }
 
 int arch_irq_is_enabled(unsigned int irq)
 {
-	return ((PFIC->ISR[irq >> 5] & (1 << (irq & 0x1F))) != 0);
-}
-
-static int pfic_init(void)
-{
-	/* `wfi` is called with interrupts disabled. Configure the PFIC to wake up on any event,
-	 * including any interrupt.
-	 */
-	PFIC->SCTLR = SEVONPEND | WFITOWFE;
+	if (EPIC->MASK_LEVEL_SET & (1 << irq)) {
+		return 1;
+	}
 	return 0;
 }
 
-SYS_INIT(pfic_init, PRE_KERNEL_1, CONFIG_INTC_INIT_PRIORITY);
+static int epic_init(void)
+{
+	printk("epic init\n");
+	set_csr(mstatus, MSTATUS_MIE);
+	set_csr(mie, MIE_MEIE);
+	return 0;
+}
+
+void scr1_timer_isr();
+
+void __soc_handle_all_irqs(void) {
+	unsigned long cause = read_csr(mcause);
+	if ( ((cause & CONFIG_RISCV_MCAUSE_EXCEPTION_MASK) == 7) && (cause & (RISCV_MCAUSE_IRQ_BIT)) ) {
+		clear_csr(mip, MIP_MTIP);
+		scr1_timer_isr();
+	} else {
+		clear_csr(mip, MIP_MEIP);
+		EPIC->CLEAR = 0xfffffffful;
+	}
+}
+
+SYS_INIT(epic_init, PRE_KERNEL_1, CONFIG_INTC_INIT_PRIORITY);

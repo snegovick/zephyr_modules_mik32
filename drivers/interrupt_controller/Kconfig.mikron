@@ -7,3 +7,10 @@ config MIK32_GPIO_IRQ
 	depends on DT_HAS_MIKRON_MIK32_GPIO_IRQ_ENABLED
 	help
 	  Enable the MIKRON MIK32 GPIO Interrupts Controller driver.
+
+config MIK32_EPIC
+	bool "MIK32 Interrupt Controller"
+	default y
+	depends on DT_HAS_MIKRON_EPIC_ENABLED
+	help
+	  Enable the MIKRON MIK32 EPIC Interrupt Controller driver.
