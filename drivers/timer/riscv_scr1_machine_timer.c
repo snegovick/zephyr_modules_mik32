@@ -26,9 +26,9 @@
 #define DT_DRV_COMPAT syntacore_machine_timer
 #define MTIMER_HAS_DIVIDER
 
-#define MTIMEDIV_REG	(DT_INST_REG_ADDR_U64(0) + 4)
-#define MTIME_REG	(DT_INST_REG_ADDR_U64(0) + 8)
-#define MTIMECMP_REG	(DT_INST_REG_ADDR_U64(0) + 16)
+#define MTIMEDIV_REG	(DT_INST_REG_ADDR_U64(0) + 0x4)
+#define MTIME_REG	(DT_INST_REG_ADDR_U64(0) + 0x8)
+#define MTIMECMP_REG	(DT_INST_REG_ADDR_U64(0) + 0x10)
 //#define TIMER_IRQN	DT_INST_IRQN(0)
 #endif
 
@@ -194,6 +194,7 @@ static int sys_clock_driver_init(void)
 	set_mtimecmp(last_count + CYC_PER_TICK);
 
 	SCR1_TIMER->TIMER_CTRL |= SCR1_TIMER_CTRL_ENABLE_M;
+	set_csr(mstatus, MSTATUS_MIE);
 	set_csr(mie, MIE_MTIE);
 	return 0;
 }
