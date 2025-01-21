@@ -9,7 +9,8 @@
 #include <zephyr/drivers/pinctrl.h>
 
 #include <soc/mikron/mik32/soc.h>
-#include <hal/mik32/peripherals/Include/mik32_hal_gpio.h>
+#include <soc/mikron/mik32/soc_gpio.h>
+//#include <hal/mik32/peripherals/Include/mik32_hal_gpio.h>
 
 /** Utility macro that expands to the GPIO port address if it exists */
 #define MIK32_PORT_ADDR_OR_NONE(nodelabel)				\

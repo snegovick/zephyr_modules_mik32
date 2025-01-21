@@ -10,15 +10,14 @@
 #include <zephyr/init.h>
 #include <zephyr/irq.h>
 #include <zephyr/kernel.h>
-#include <hal/mik32/peripherals/Include/mik32_hal_irq.h>
-#include <hal/mik32/shared/include/mik32_memory_map.h>
-#include <hal/mik32/shared/periphery/epic.h>
-#include <hal/mik32/shared/periphery/scr1_timer.h>
-#include <zephyr/arch/riscv/irq.h>
 
-#define MIE_MEIE                    (0x1 << 11)
-#define MIP_MTIP                    (0x1 << 7)
-#define MIP_MEIP                    (0x1 << 11)
+#include <zephyr/arch/riscv/irq.h>
+#include <zephyr/arch/riscv/csr.h>
+
+#include <zephyr/soc/mik32_memory_map.h>
+#include <zephyr/soc/mik32_irq.h>
+
+#include <soc/mikron/mik32/soc.h>
 
 void arch_irq_enable(unsigned int irq)
 {

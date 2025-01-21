@@ -11,9 +11,10 @@
 #include <zephyr/drivers/clock_control.h>
 #include <zephyr/drivers/pinctrl.h>
 
-#include <hal/mik32/peripherals/Include/mik32_hal_usart.h>
-#include <hal/mik32/peripherals/Include/mik32_hal_irq.h>
-#include <hal/mik32/shared/include/mik32_memory_map.h>
+#include <zephyr/soc/mik32_memory_map.h>
+#include <zephyr/soc/mik32_irq.h>
+
+#include "mik32_uart.h"
 
 struct usart_mik32_config {
 	UART_TypeDef *regs;

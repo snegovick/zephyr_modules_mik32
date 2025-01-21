@@ -7,5 +7,5 @@ zephyr_include_directories(dts/riscv/mikron)
 # zephyr_include_directories(hal)
 
 add_subdirectory(drivers)
-add_subdirectory(hal)
+# add_subdirectory(hal)
 # add_subdirectory(soc)

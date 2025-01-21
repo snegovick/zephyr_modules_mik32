@@ -1,5 +1,5 @@
-#ifndef UART_H_INCLUDED
-#define UART_H_INCLUDED
+#ifndef __MIK32_UART_H
+#define __MIK32_UART_H
 
 #define UART_CONTROL1_M1_S         28
 #define UART_CONTROL1_M1_M         (1 << UART_CONTROL1_M1_S)
@@ -125,12 +125,11 @@
 #define UART_MODEM_DSRIF_M         (1 << UART_MODEM_DSRIF_S)
 
 
-#ifndef __ASSEMBLER__
-    #include <inttypes.h>
+#include <stdint.h>
 
     
-    typedef struct
-    {  
+typedef struct
+{  
         volatile uint32_t CONTROL1;
         volatile uint32_t CONTROL2;
         volatile uint32_t CONTROL3;
@@ -144,7 +143,6 @@
         volatile uint32_t TXDATA;
         volatile uint32_t MODEM;
         
-    } UART_TypeDef;
-#endif
+} UART_TypeDef;
 
-#endif // UART_H_INCLUDED
+#endif/*__MIK32_UART_H*/

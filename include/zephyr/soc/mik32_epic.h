@@ -1,5 +1,7 @@
-#ifndef EPIC_H_INCLUDED
-#define EPIC_H_INCLUDED
+#ifndef __MIK32_EPIC_H
+#define __MIK32_EPIC_H
+
+#include <stdint.h>
 
 #define EPIC_MASK_EDGE_SET          0x00
 #define EPIC_MASK_EDGE_CLEAR        0x04
@@ -44,12 +46,8 @@
 #define EPIC_LINE_DAC1_S                 31
 #define EPIC_LINE_M(interrupt_line)     (1 << interrupt_line)
 
-
-#ifndef __ASSEMBLER__
-    #include <inttypes.h>
-
-    typedef struct
-    {  
+typedef struct
+{  
         volatile uint32_t MASK_EDGE_SET;        // 0x00
         volatile uint32_t MASK_EDGE_CLEAR;      // 0x04
         volatile uint32_t MASK_LEVEL_SET;       // 0x08
@@ -58,7 +56,6 @@
         volatile uint32_t CLEAR;                // 0x18
         volatile uint32_t STATUS;               // 0x1C
         volatile uint32_t RAW_STATUS;           // 0x20  
-    } EPIC_TypeDef;
-#endif
+} EPIC_TypeDef;
 
-#endif // EPIC_H_INCLUDED
+#endif/*__MIK32_EPIC_H*/

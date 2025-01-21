@@ -3,3 +3,33 @@ config SOC_MIK32
 
 config SOC
         default "MIK32" if SOC_MIK32
+
+config NON_POWER_OF_2_ISR_ALIGNMENT_FIXUP
+	bool "Wrap isr into fixup section which can be aligned in linker script"
+	default n
+
+if NON_POWER_OF_2_ISR_ALIGNMENT_FIXUP
+config ISR_FIXUP_SECTION_OFFSET
+	hex "ISR fixup section relative offset"
+	default 0x40
+
+config ISR_FIXUP_SECTION_ALIGNMENT
+	hex "ISR fixup section alignment in linker script"
+	default 0x80
+
+endif # NON_POWER_OF_2_ISR_ALIGNMENT_FIXUP
+
+config RISCV_JUMP_TO_CODE
+	bool "Jump into proper address where code actually resides on start"
+	default n
+
+if RISCV_JUMP_TO_CODE
+config RISCV_JUMP_TO_CODE_OFFSET
+	hex "Offset for auipc to jump into"
+	default 0x80000
+
+endif # RISCV_JUMP_TO_CODE
+
+config RISCV_USE_START_AS_MTVEC
+	bool "Put _start address into mtvec instead of isr_wrapper address"
+	default n

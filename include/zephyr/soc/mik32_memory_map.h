@@ -1,5 +1,7 @@
-#ifndef MIK32_MEMORY_MAP_H_INCLUDED
-#define MIK32_MEMORY_MAP_H_INCLUDED
+#ifndef __MIK32_MEMORY_MAP_H
+#define __MIK32_MEMORY_MAP_H
+
+#include <zephyr/soc/mik32_epic.h>
 
 #define EEPROM_BASE_ADDRESS                 0x01000000
 #define EEPROM_SIZE                         (16*1024)
@@ -239,4 +241,4 @@
 #define DMA_TIMER32_0_INDEX         12
 
 
-#endif // 32_MEMORY_MAP_H_INCLUDED
+#endif/*__MIK32_MEMORY_MAP_H*/

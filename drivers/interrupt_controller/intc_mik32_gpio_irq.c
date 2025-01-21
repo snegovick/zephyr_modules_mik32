@@ -13,12 +13,16 @@
 #include <zephyr/irq.h>
 #include <zephyr/sys/util_macro.h>
 
-#include <hal/mik32/peripherals/Include/mik32_hal_irq.h>
+//#include <hal/mik32/peripherals/Include/mik32_hal_irq.h>
 #include <zephyr/drivers/interrupt_controller/mik32_gpio_irq.h>
 #include <zephyr/drivers/clock_control/mik32.h>
-#include <hal/mik32/shared/include/mik32_memory_map.h>
-#include <hal/mik32/shared/periphery/epic.h>
+//#include <hal/mik32/shared/include/mik32_memory_map.h>
+//#include <hal/mik32/shared/periphery/epic.h>
 #include <soc/mikron/mik32/soc.h>
+#include <soc/mikron/mik32/soc_gpio.h>
+
+#include <zephyr/soc/mik32_memory_map.h>
+#include <zephyr/soc/mik32_irq.h>
 
 /** Unsupported line indicator */
 #define GPIO_IRQ_NOTSUP 0xFFU
@@ -38,7 +42,6 @@ struct mik32_gpio_irq_data {
 	uint32_t irq_line_mux;
 };
 
-
 __unused static void mik32_gpio_irq_isr(const void *isr_data)
 {
 	const struct device *const dev = DEVICE_DT_INST_GET(0);
@@ -53,26 +56,6 @@ __unused static void mik32_gpio_irq_isr(const void *isr_data)
 			}
 		}
 	}
-}
-
-void HAL_EPIC_MaskEdgeSet(uint32_t InterruptMask)
-{
-	EPIC->MASK_EDGE_SET |= InterruptMask;
-}
-
-void HAL_EPIC_MaskEdgeClear(uint32_t InterruptMask)
-{
-	EPIC->MASK_EDGE_CLEAR |= InterruptMask;
-}
-
-void HAL_EPIC_MaskLevelSet(uint32_t InterruptMask)
-{
-	EPIC->MASK_LEVEL_SET = InterruptMask;
-}
-
-void HAL_EPIC_MaskLevelClear(uint32_t InterruptMask)
-{
-	EPIC->MASK_LEVEL_CLEAR = InterruptMask;
 }
 
 void mik32_set_irq_mux_line(uint8_t mux_line, uint8_t mux_val) {

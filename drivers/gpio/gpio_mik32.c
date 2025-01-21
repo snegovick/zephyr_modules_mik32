@@ -12,12 +12,16 @@
 
 #include <zephyr/drivers/gpio/gpio_utils.h>
 
-#include <hal/mik32/peripherals/Include/mik32_hal_irq.h>
+//#include <hal/mik32/peripherals/Include/mik32_hal_irq.h>
 #include <zephyr/drivers/clock_control/mik32.h>
 #include <zephyr/drivers/interrupt_controller/mik32_gpio_irq.h>
-#include <hal/mik32/shared/include/mik32_memory_map.h>
-#include <hal/mik32/shared/periphery/epic.h>
+//#include <hal/mik32/shared/include/mik32_memory_map.h>
+//#include <hal/mik32/shared/periphery/epic.h>
 #include <soc/mikron/mik32/soc.h>
+#include <soc/mikron/mik32/soc_gpio.h>
+
+#include <zephyr/soc/mik32_irq.h>
+#include <zephyr/soc/mik32_memory_map.h>
 
 #define GPIO_IRQ_NODE DT_NODELABEL(gpio_irq)
 

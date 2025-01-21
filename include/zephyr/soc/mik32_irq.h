@@ -1,13 +1,41 @@
-#ifndef MIK32_HAL_IRQ
-#define MIK32_HAL_IRQ
+#ifndef __MIK32_IRQ_H
+#define __MIK32_IRQ_H
 
-#include "epic.h"
-#include "csr.h"
-#include "scr1_csr_encoding.h"
-#include "mik32_memory_map.h"
+#include <zephyr/soc/mik32_memory_map.h>
 
+#define EPIC_TIMER32_0_INDEX        0
+#define EPIC_UART_0_INDEX           1
+#define EPIC_UART_1_INDEX           2
+#define EPIC_SPI_0_INDEX            3
+#define EPIC_SPI_1_INDEX            4
+#define EPIC_GPIO_IRQ_INDEX         5
+#define EPIC_I2C_0_INDEX            6
+#define EPIC_I2C_1_INDEX            7
+#define EPIC_WDT_INDEX              8
+#define EPIC_TIMER16_0_INDEX        9
+#define EPIC_TIMER16_1_INDEX        10
+#define EPIC_TIMER16_2_INDEX        11
+#define EPIC_TIMER32_1_INDEX        12
+#define EPIC_TIMER32_2_INDEX        13
+#define EPIC_SPIFI_INDEX            14
+#define EPIC_RTC_INDEX              15
+#define EPIC_EEPROM_INDEX           16
+#define EPIC_WDT_DOM3_INDEX         17
+#define EPIC_WDT_SPIFI_INDEX        18
+#define EPIC_WDT_EEPROM_INDEX       19
+#define EPIC_DMA_INDEX              20
+#define EPIC_FREQ_MON_INDEX         21
+#define EPIC_PVD_AVCC_UNDER         22
+#define EPIC_PVD_AVCC_OVER          23
+#define EPIC_PVD_VCC_UNDER          24
+#define EPIC_PVD_VCC_OVER           25
+#define EPIC_BATTERY_NON_GOOD       26
+#define EPIC_BOR_INDEX              27
+#define EPIC_TSENS_INDEX            28
+#define EPIC_ADC_INDEX              29
+#define EPIC_DAC0_INDEX             30
+#define EPIC_DAC1_INDEX             31
 
-/* Title: Макросы */
 #ifdef MIK32V0
     /*
     * Defines: Маска линии прерывания 
@@ -214,117 +242,33 @@
     #define EPIC_CHECK_DAC1()                  (EPIC->STATUS & (1 << EPIC_DAC1_INDEX))                       
 #endif // MIK32V0
 
+#define HAL_IRQ_EnableInterrupts() do {		\
+		set_csr(mstatus, MSTATUS_MIE);	\
+		set_csr(mie, MIE_MEIE);		\
+	} while(0)
 
+#define HAL_IRQ_DisableInterrupts() do {		\
+		clear_csr(mie, MIE_MEIE);		\
+	} while(0)
 
-/*
- * Function: HAL_IRQ_EnableInterrupts
- * Разрешить глобальные прерывания.
- * 
- * Разрешается машинное программное прерывание.
- *
- * Returns:
- * void.
- */
-void HAL_IRQ_EnableInterrupts();
+#define HAL_EPIC_MaskEdgeSet(InterruptMask) do {	\
+		EPIC->MASK_EDGE_SET |= InterruptMask;	\
+	} while(0)
 
-/*
- * Function: HAL_IRQ_DisableInterrupts
- * Запретить машинное программное прерывание.
- * 
- * Глобальные прерывания не запрещаются.
- *
- * Returns:
- * void.
- */
-void HAL_IRQ_DisableInterrupts();
-/* Прерывание по фронту */
+#define HAL_EPIC_MaskEdgeClear(InterruptMask) do {	\
+		EPIC->MASK_EDGE_CLEAR |= InterruptMask;	\
+	} while(0)
 
-/*
- * Function: HAL_EPIC_MaskSet
- * Задать маску разрешенных линий прерываний по фронту
- *
- * Parameters:
- * InterruptMask - Маска разрешенных линий прерываний
- *
- * Returns:
- * void.
- */
-void HAL_EPIC_MaskEdgeSet(uint32_t InterruptMask);
+#define HAL_EPIC_MaskLevelSet(InterruptMask) do {	\
+		EPIC->MASK_LEVEL_SET = InterruptMask;	\
+	} while(0)
 
-/*
- * Function: HAL_EPIC_MaskClear
- * Сбросить маску разрешенный линий прерываний по фронту
- *
- * Parameters:
- * InterruptMask - Маска сбрасываемых линий прерываний
- *
- * Returns:
- * void.
- */
-void HAL_EPIC_MaskEdgeClear(uint32_t InterruptMask);
+#define HAL_EPIC_MaskLevelClear(InterruptMask) do {	\
+		EPIC->MASK_LEVEL_CLEAR = InterruptMask;	\
+	} while(0)
 
-/*
- * Function: HAL_EPIC_MaskSet
- * Задать маску разрешенных линий прерываний по уровню
- *
- * Parameters:
- * InterruptMask - Маска разрешенных линий прерываний
- *
- * Returns:
- * void.
- */
-void HAL_EPIC_MaskLevelSet(uint32_t InterruptMask);
+#define HAL_EPIC_GetStatus() EPIC->STATUS
 
-/*
- * Function: HAL_EPIC_MaskClear
- * Сбросить маску разрешенный линий прерываний по уровню
- *
- * Parameters:
- * InterruptMask - Маска сбрасываемых линий прерываний
- *
- * Returns:
- * void.
- */
-void HAL_EPIC_MaskLevelClear(uint32_t InterruptMask);
+#define HAL_EPIC_GetRawStatus() EPIC->RAW_STATUS
 
-/*
- * Function: HAL_EPIC_Clear
- * Сбросить прерывания
- *
- * Parameters:
- * InterruptMask - Маска сбрасываемых линий прерываний
- *
- * Returns:
- * void.
- */
-static inline __attribute__((always_inline)) void HAL_EPIC_Clear(uint32_t InterruptMask)
-{
-    EPIC->CLEAR = InterruptMask;
-}
-
-/*
- * Function: HAL_EPIC_GetStatus
- * Получить текущий статус прерываний в соответствии с маской разрешенных прерываний
- *
- * Returns:
- * (uint32_t ) - Текущий статус прерываний в соответствии с маской разрешенных прерываний
- */
-uint32_t HAL_EPIC_GetStatus();
-
-/*
- * Function: HAL_EPIC_GetRawStatus
- * Получить текущий статус прерываний
- * 
- * В данном статусе маска разрешенных прерываний не учитывается
- *
- * Returns:
- * (uint32_t ) - текущий статус прерываний
- */
-uint32_t HAL_EPIC_GetRawStatus();
-
-
-
-
-
-
-#endif
+#endif/* __MIK32_IRQ_H*/

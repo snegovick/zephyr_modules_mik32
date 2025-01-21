@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2018-2023 Intel Corporation
- * Copyright (c) 2025 Escave
+ * Copyright (c) 2025 Excave
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -16,9 +16,11 @@
 #include <zephyr/spinlock.h>
 #include <zephyr/irq.h>
 
-#include <hal/mik32/shared/periphery/scr1_timer.h>
-#include <hal/mik32/shared/include/mik32_memory_map.h>
-#include <hal/mik32/shared/include/scr1_csr_encoding.h>
+#include <zephyr/arch/riscv/csr.h>
+
+#include <zephyr/soc/mik32_memory_map.h>
+#include <zephyr/soc/mik32_irq.h>
+
 #include <soc/mikron/mik32/soc.h>
 
 /* syntacore,machine-timer*/
@@ -26,10 +28,14 @@
 #define DT_DRV_COMPAT syntacore_machine_timer
 #define MTIMER_HAS_DIVIDER
 
+#define SCR1_TIMER_CTRL	(DT_INST_REG_ADDR_U64(0))
+#define MTIMEDIV_REG	(DT_INST_REG_ADDR_U64(0) + 0x4)
 #define MTIMEDIV_REG	(DT_INST_REG_ADDR_U64(0) + 0x4)
 #define MTIME_REG	(DT_INST_REG_ADDR_U64(0) + 0x8)
 #define MTIMECMP_REG	(DT_INST_REG_ADDR_U64(0) + 0x10)
-//#define TIMER_IRQN	DT_INST_IRQN(0)
+
+#define SCR1_TIMER_CTRL_ENABLE_M 1
+
 #endif
 
 #define CYC_PER_TICK (uint32_t)(sys_clock_hw_cycles_per_sec() \
@@ -38,8 +44,6 @@
 /* the unsigned long cast limits divisions to native CPU register width */
 #define cycle_diff_t unsigned long
 #define CYCLE_DIFF_MAX (~(cycle_diff_t)0)
-
-#define MIE_MTIE                    (0x1 << 7)
 
 /*
  * We have two constraints on the maximum number of cycles we can wait for.
@@ -193,7 +197,8 @@ static int sys_clock_driver_init(void)
 	last_count = last_ticks * CYC_PER_TICK;
 	set_mtimecmp(last_count + CYC_PER_TICK);
 
-	SCR1_TIMER->TIMER_CTRL |= SCR1_TIMER_CTRL_ENABLE_M;
+	*(volatile uint32_t *)SCR1_TIMER_CTRL |= SCR1_TIMER_CTRL_ENABLE_M;
+
 	set_csr(mstatus, MSTATUS_MIE);
 	set_csr(mie, MIE_MTIE);
 	return 0;
