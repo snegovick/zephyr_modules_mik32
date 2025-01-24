@@ -82,8 +82,8 @@
 			clocks = <&pmgr MIK32_CLOCK_USART0>;
 			status = "disabled";
 
-			/* interrupts = <1>; */
-			/* interrupt-parent = < &epic >; */
+			interrupts = <1>;
+			interrupt-parent = < &epic >;
 		};
 
 		usart1: serial@81800 {
@@ -93,8 +93,8 @@
 			clocks = <&pmgr MIK32_CLOCK_USART1>;
 			status = "disabled";
 
-			/* interrupts = <2>; */
-			/* interrupt-parent = < &epic >; */
+			interrupts = <2>;
+			interrupt-parent = < &epic >;
 		};
 
 		eeprom0: eeprom@1000000 {
