@@ -12,6 +12,9 @@ config SYS_CLOCK_TICKS_PER_SEC
 config GEN_ISR_TABLES
 	default n
 
+config GEN_SW_ISR_TABLE
+	default n
+
 config GEN_IRQ_VECTOR_TABLE
 	default n
 
