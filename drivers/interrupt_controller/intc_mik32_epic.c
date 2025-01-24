@@ -19,6 +19,8 @@
 
 #include <soc/mikron/mik32/soc.h>
 
+#include <zephyr/sw_isr_table.h>
+
 void arch_irq_enable(unsigned int irq)
 {
 	EPIC->MASK_LEVEL_SET = 1<<irq;
@@ -37,9 +39,48 @@ int arch_irq_is_enabled(unsigned int irq)
 	return 0;
 }
 
+struct _isr_table_entry _sw_isr_table[32] = {
+	{.arg = NULL, .isr = z_irq_spurious},
+	{.arg = NULL, .isr = z_irq_spurious},
+	{.arg = NULL, .isr = z_irq_spurious},
+	{.arg = NULL, .isr = z_irq_spurious},
+	{.arg = NULL, .isr = z_irq_spurious},
+	{.arg = NULL, .isr = z_irq_spurious},
+	{.arg = NULL, .isr = z_irq_spurious},
+	{.arg = NULL, .isr = z_irq_spurious},
+	{.arg = NULL, .isr = z_irq_spurious},
+	{.arg = NULL, .isr = z_irq_spurious},
+	{.arg = NULL, .isr = z_irq_spurious},
+	{.arg = NULL, .isr = z_irq_spurious},
+	{.arg = NULL, .isr = z_irq_spurious},
+	{.arg = NULL, .isr = z_irq_spurious},
+	{.arg = NULL, .isr = z_irq_spurious},
+	{.arg = NULL, .isr = z_irq_spurious},
+	{.arg = NULL, .isr = z_irq_spurious},
+	{.arg = NULL, .isr = z_irq_spurious},
+	{.arg = NULL, .isr = z_irq_spurious},
+	{.arg = NULL, .isr = z_irq_spurious},
+	{.arg = NULL, .isr = z_irq_spurious},
+	{.arg = NULL, .isr = z_irq_spurious},
+	{.arg = NULL, .isr = z_irq_spurious},
+	{.arg = NULL, .isr = z_irq_spurious},
+	{.arg = NULL, .isr = z_irq_spurious},
+	{.arg = NULL, .isr = z_irq_spurious},
+	{.arg = NULL, .isr = z_irq_spurious},
+	{.arg = NULL, .isr = z_irq_spurious},
+	{.arg = NULL, .isr = z_irq_spurious},
+	{.arg = NULL, .isr = z_irq_spurious},
+	{.arg = NULL, .isr = z_irq_spurious},
+	{.arg = NULL, .isr = z_irq_spurious},
+};
+
 static int epic_init(void)
 {
-	printk("epic init\n");
+	//printk("epic init\n");
+	/* for (int i = 0; i < 32; i ++) { */
+	/* 	_sw_isr_table[i].isr = &z_irq_spurious; */
+	/* 	_sw_isr_table[i].arg = NULL; */
+	/* } */
 	set_csr(mstatus, MSTATUS_MIE);
 	set_csr(mie, MIE_MEIE);
 	return 0;
@@ -53,7 +94,13 @@ void __soc_handle_all_irqs(void) {
 		clear_csr(mip, MIP_MTIP);
 		scr1_timer_isr();
 	} else {
+		uint32_t status = EPIC->STATUS;
 		clear_csr(mip, MIP_MEIP);
+		for (int i = 0; i < 32; i ++) {
+			if (status & (1 << i)) {
+				_sw_isr_table[i].isr(_sw_isr_table[i].arg);
+			}
+		}
 		EPIC->CLEAR = 0xfffffffful;
 	}
 }
