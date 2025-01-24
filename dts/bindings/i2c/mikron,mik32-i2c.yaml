@@ -1,0 +1,24 @@
+# Copyright (c) 2025
+# SPDX-License-Identifier: Apache-2.0
+
+description: Mikron MIK32 I2C
+
+compatible: "mikron,mik32-i2c"
+
+include: [i2c-controller.yaml, reset-device.yaml, pinctrl-device.yaml]
+
+properties:
+  reg:
+    required: true
+
+  interrupts:
+    required: true
+
+  clocks:
+    required: true
+
+  pinctrl-0:
+    required: true
+
+  pinctrl-names:
+    required: true
