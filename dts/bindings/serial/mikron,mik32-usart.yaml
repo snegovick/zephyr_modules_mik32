@@ -1,6 +1,6 @@
 description: MIKRON MIK32 UART
 
-compatible: "mikron,usart"
+compatible: "mikron,mik32-usart"
 
 include: [uart-controller.yaml, pinctrl-device.yaml]
 
