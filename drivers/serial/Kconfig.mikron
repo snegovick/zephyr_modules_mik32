@@ -1,10 +1,10 @@
 # Copyright (c) 2024
 # SPDX-License-Identifier: Apache-2.0
 
-config UART_MIK32_USART
+config UART_MIKRON_MIK32_USART
 	bool "Mikron MIK32 USART driver"
 	default y
-	depends on DT_HAS_MIKRON_USART_ENABLED
+	depends on DT_HAS_MIKRON_MIK32_USART_ENABLED
 	select SERIAL_HAS_DRIVER
 	select SERIAL_SUPPORT_INTERRUPT
 	select PINCTRL
