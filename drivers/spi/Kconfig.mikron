@@ -1,0 +1,20 @@
+# Copyright (c) 2025 Excave.ru
+# SPDX-License-Identifier: Apache-2.0
+
+config SPI_MIK32
+	bool "Mikron MIK32 SPI driver"
+	default y
+	depends on DT_HAS_MIKRON_MIK32_SPI_ENABLED
+	select PINCTRL
+	help
+	  Enables Mikron MIK32 SPI driver.
+
+if SPI_MIK32
+
+config SPI_MIK32_INTERRUPT
+	bool "MIK32 MCU SPI Interrupt Support"
+	default y if SPI_ASYNC
+	help
+	  Enable the interrupt driven mode for SPI instances
+
+endif # SPI_MIK32

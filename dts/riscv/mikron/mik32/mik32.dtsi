@@ -119,6 +119,28 @@
 			interrupt-parent = < &epic >;
 		};
 
+		spi0: spi@83000 {
+			compatible = "mikron,mik32-spi";
+			reg = <0x00083000 0x30>;
+			clock-frequency = <8000000>;
+			clocks = <&pmgr MIK32_CLOCK_SPI0>;
+			status = "disabled";
+
+			interrupts = <3>;
+			interrupt-parent = < &epic >;
+		};
+
+		spi1: spi@83400 {
+			compatible = "mikron,mik32-spi";
+			reg = <0x00083400 0x30>;
+			clock-frequency = <8000000>;
+			clocks = <&pmgr MIK32_CLOCK_SPI1>;
+			status = "disabled";
+
+			interrupts = <4>;
+			interrupt-parent = < &epic >;
+		};
+
 		eeprom0: eeprom@1000000 {
 			compatible = "mikron,eeprom-8k-blk";
 			reg = <0x01000000 0x2000>;
