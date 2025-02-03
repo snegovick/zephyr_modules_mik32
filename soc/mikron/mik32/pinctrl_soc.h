@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Escave
+ * Copyright (c) 2024 Excave
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -108,6 +108,13 @@ typedef uint32_t pinctrl_soc_pin_t;
 #define MIK32_STRENGTH_MSK 0x3U
 /** Drive strength field position. */
 #define MIK32_STRENGTH_POS 26U
+
+#define MIK32_PINMUX_DIR_OUT (MIK32_DIR_OUT << MIK32_DIR_POS)
+#define MIK32_PINMUX_DIR_IN (MIK32_DIR_IN << MIK32_DIR_POS)
+
+#define MIK32_PINMUX_STRENGTH_2MA (MIK32_STRENGTH_2MA << MIK32_STRENGTH_POS)
+#define MIK32_PINMUX_STRENGTH_4MA (MIK32_STRENGTH_4MA << MIK32_STRENGTH_POS)
+#define MIK32_PINMUX_STRENGTH_8MA (MIK32_STRENGTH_8MA << MIK32_STRENGTH_POS)
 
 /** @} */
 
