@@ -3,7 +3,9 @@
  */
 
 #include <zephyr/dt-bindings/pinctrl/mik32-af.h>
-#include <soc/mikron/mik32/pinctrl_soc.h>
+#include <zephyr/dt-bindings/pinctrl/mik32-pincfg.h>
+//#include <soc/mikron/mik32/pinctrl_soc.h>
+//#include <soc/mikron/mik32/pinctrl_soc.h>
 
 /* I2C1_SDA */
 #define I2C1_SDA_PB12 \
