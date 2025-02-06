@@ -9,10 +9,10 @@ module = EEPROM
 module-str = eeprom
 source "subsys/logging/Kconfig.template.log_config"
 
-config EEPROM_MIKRON_EEPROM_8K_BLK
+config EEPROM_MIK32_8K_BLK
 	bool "Mikron 8k blk EEPROM driver"
-	default y
-	depends on DT_HAS_MIKRON_EEPROM_8K_BLK_ENABLED
+	default n
+	depends on DT_HAS_MIKRON_8K_BLK_ENABLED
 	help
 	  Enable support for Mikron 8k blk EEPROM driver.
 
