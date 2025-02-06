@@ -1,11 +1,11 @@
-# Copyright (c) 2025
+# Copyright (c) 2025 Excave.ru
 # SPDX-License-Identifier: Apache-2.0
 
 description: Mikron MIK32 I2C
 
 compatible: "mikron,mik32-i2c"
 
-include: [i2c-controller.yaml, reset-device.yaml, pinctrl-device.yaml]
+include: [i2c-controller.yaml, pinctrl-device.yaml]
 
 properties:
   reg:

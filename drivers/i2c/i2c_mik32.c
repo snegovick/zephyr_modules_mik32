@@ -15,8 +15,7 @@
 #include <zephyr/drivers/pinctrl.h>
 #include <zephyr/drivers/reset.h>
 #include <zephyr/drivers/i2c.h>
-
-#include <mik32_i2c.h>
+#include <zephyr/dt-bindings/i2c/i2c.h>
 
 #include <zephyr/logging/log.h>
 #include <zephyr/irq.h>
@@ -26,6 +25,7 @@ LOG_MODULE_REGISTER(i2c_mik32, CONFIG_I2C_LOG_LEVEL);
 
 struct i2c_mik32_config {
 	I2C_TypeDef * regs;
+	const struct device *clock_dev;
 	uint32_t bitrate;
 	uint16_t clkid;
 	struct reset_dt_spec reset;
@@ -49,43 +49,57 @@ struct i2c_mik32_data {
 	bool master_active;
 };
 
+static inline uint32_t i2c_map_dt_bitrate(uint32_t bitrate)
+{
+	switch (bitrate) {
+	case I2C_BITRATE_STANDARD:
+		return I2C_SPEED_STANDARD << I2C_SPEED_SHIFT;
+	case I2C_BITRATE_FAST:
+		return I2C_SPEED_FAST << I2C_SPEED_SHIFT;
+	case I2C_BITRATE_FAST_PLUS:
+		return I2C_SPEED_FAST_PLUS << I2C_SPEED_SHIFT;
+	case I2C_BITRATE_HIGH:
+		return I2C_SPEED_HIGH << I2C_SPEED_SHIFT;
+	case I2C_BITRATE_ULTRA:
+		return I2C_SPEED_ULTRA << I2C_SPEED_SHIFT;
+	}
+
+	LOG_ERR("Invalid I2C bit rate value");
+
+	return 0;
+}
+
 static inline void i2c_mik32_enable_tx_interrupts(const struct i2c_mik32_config  *cfg)
 {
-	I2C_TypeDef *regs = cfg->reg;
-	regs->CR1 |= I2C_CR1_ERRIE_M | I2C_CR1_TCIE_M | I2C_CR1_NACKIE_M | I2C_CR1_TXIE_M;
+	cfg->regs->CR1 |= I2C_CR1_ERRIE_M | I2C_CR1_TCIE_M | I2C_CR1_NACKIE_M | I2C_CR1_TXIE_M;
 }
 
 static inline void i2c_mik32_enable_rx_interrupts(const struct i2c_mik32_config  *cfg)
 {
-	I2C_TypeDef *regs = cfg->reg;
-	regs->CR1 |= I2C_CR1_ERRIE_M | I2C_CR1_TCIE_M | I2C_CR1_ADDRIE_M | I2C_CR1_RXIE_M;
+	cfg->regs->CR1 |= I2C_CR1_ERRIE_M | I2C_CR1_TCIE_M | I2C_CR1_ADDRIE_M | I2C_CR1_RXIE_M;
 }
 
 static inline void i2c_mik32_disable_interrupts(const struct i2c_mik32_config  *cfg)
 {
-	I2C_TypeDef *regs = cfg->reg;
-	regs->CR1 &= ~I2C_INTMASK;
+	cfg->regs->CR1 &= ~I2C_INTMASK;
 }
 
 static void i2c_mik32_isr(const struct device *dev)
 {
 	struct i2c_mik32_data *data = dev->data;
-	const struct i2c_gd32_config *cfg = dev->config;
-	uint32_t stat;
+	const struct i2c_mik32_config *cfg = dev->config;
 
-	I2C_TypeDef *regs = cfg->reg;
-
-	uint32_t int_mask = regs->CR1 & I2C_INTMASK; /* разрешенные прерывания  */
-	uint32_t status = regs->ISR; /* Флаги */
+	uint32_t int_mask = cfg->regs->CR1 & I2C_INTMASK; /* разрешенные прерывания  */
+	uint32_t status = cfg->regs->ISR; /* Флаги */
 
 	if ((status & I2C_ISR_ADDR_M) && (int_mask & I2C_CR1_ADDRIE_M)) {
-		if (regs->CR1 & I2C_CR1_SBC_M) {
-			regs->CR2 &= ~I2C_CR2_NBYTES_M;
-			regs->CR2 |= I2C_CR2_NBYTES(0x1);
+		if (cfg->regs->CR1 & I2C_CR1_SBC_M) {
+			cfg->regs->CR2 &= ~I2C_CR2_NBYTES_M;
+			cfg->regs->CR2 |= I2C_CR2_NBYTES(0x1);
 		}
 
 		/* Сброс флага ADDR */
-		regs->ICR |= I2C_ICR_ADDRCF_M;
+		cfg->regs->ICR |= I2C_ICR_ADDRCF_M;
 	}
 
 	if ((status & (I2C_ISR_BERR_M | I2C_ISR_ARLO_M | I2C_ISR_OVR_M)) && (int_mask & I2C_CR1_ERRIE_M)) {
@@ -101,8 +115,8 @@ static void i2c_mik32_isr(const struct device *dev)
 		if (status & I2C_ISR_OVR_M) {
 			data->errs |= I2C_ERROR_OVR;			
 		}
-		regs->CR1 &= ~I2C_CR1_PE_M;
-		regs->CR1 |= I2C_CR1_PE_M;
+		cfg->regs->CR1 &= ~I2C_CR1_PE_M;
+		cfg->regs->CR1 |= I2C_CR1_PE_M;
 	}
 
 	if ((status & I2C_ISR_NACKF_M) && (int_mask & I2C_CR1_NACKIE_M)) {
@@ -110,17 +124,17 @@ static void i2c_mik32_isr(const struct device *dev)
 		i2c_mik32_disable_interrupts(cfg);
 		/* Сброс I2C */
 		data->errs = I2C_ERROR_NACK;
-		regs->CR1 &= ~I2C_CR1_PE_M;
-		regs->CR1 |= I2C_CR1_PE_M;
+		cfg->regs->CR1 &= ~I2C_CR1_PE_M;
+		cfg->regs->CR1 |= I2C_CR1_PE_M;
 	}
 
 	if ((status & I2C_ISR_STOPF_M) && (int_mask & I2C_CR1_STOPIE_M)) {
 		/* Сброс содержимого TXDR */
-		regs->ISR |= I2C_ISR_TXE_M;
+		cfg->regs->ISR |= I2C_ISR_TXE_M;
 		/* Сброс флага детектирования STOP на шине */
-		regs->ICR |= I2C_ICR_STOPCF_M;
+		cfg->regs->ICR |= I2C_ICR_STOPCF_M;
 
-		regs->CR2 |= I2C_CR2_STOP_M;
+		cfg->regs->CR2 |= I2C_CR2_STOP_M;
 		k_sem_give(&data->sync_sem);
 	}
 
@@ -128,97 +142,99 @@ static void i2c_mik32_isr(const struct device *dev)
 		data->xfered_len++;
 		if ((data->xfered_len > data->xfer_len) && (data->master_active == false))
 		{
-			regs->CR1 &= ~I2C_CR1_PE_M;
-			regs->CR1 |= I2C_CR1_PE_M;
+			cfg->regs->CR1 &= ~I2C_CR1_PE_M;
+			cfg->regs->CR1 |= I2C_CR1_PE_M;
 
-			regs->CR2 |= I2C_CR2_STOP_M;
+			cfg->regs->CR2 |= I2C_CR2_STOP_M;
 			k_sem_give(&data->sync_sem);
 		}
 		else
 		{
-			regs->TXDR = *((uint8_t *)data->current->buf);
+			cfg->regs->TXDR = *((uint8_t *)data->current->buf);
 			data->current->buf++;
 			if (data->xfered_len == data->xfer_len)
 			{
-				regs->CR2 |= I2C_CR2_STOP_M;
+				cfg->regs->CR2 |= I2C_CR2_STOP_M;
 				k_sem_give(&data->sync_sem);
 			}
 		}
 	}
 
 	if ((status & I2C_ISR_RXNE_M) && (int_mask & I2C_CR1_RXIE_M)) {
-		*((uint8_t *)data->current->buf) = (uint8_t)regs->RXDR;
+		*((uint8_t *)data->current->buf) = (uint8_t)cfg->regs->RXDR;
 
-		if (regs->CR1 & I2C_CR1_SBC_M)
+		if (cfg->regs->CR1 & I2C_CR1_SBC_M)
 		{
-			regs->CR2 &= ~I2C_CR2_NACK_M; /* Формирование ACK */
+			cfg->regs->CR2 &= ~I2C_CR2_NACK_M; /* Формирование ACK */
 		}
 
 		data->current->buf++;
 		data->xfered_len++;
 		if (data->xfered_len == data->xfer_len)
 		{
-			regs->CR2 |= I2C_CR2_STOP_M;
+			cfg->regs->CR2 |= I2C_CR2_STOP_M;
 			k_sem_give(&data->sync_sem);
 		}
 	}
 
 	if ((status & I2C_ISR_TCR_M) && (int_mask & I2C_CR1_TCIE_M)) {
-		if (regs->CR1 & I2C_CR1_SBC_M)
+		if (cfg->regs->CR1 & I2C_CR1_SBC_M)
 		{
-			*((uint8_t *)data->current->buf) = (uint8_t)regs->RXDR;
+			*((uint8_t *)data->current->buf) = (uint8_t)cfg->regs->RXDR;
 			data->current->buf++;
 			data->xfered_len++;
 
-			regs->CR2 &= ~I2C_CR2_NACK_M; /* Формирование ACK */
+			cfg->regs->CR2 &= ~I2C_CR2_NACK_M; /* Формирование ACK */
 			/* Выключить все прерывания I2C */
 			i2c_mik32_disable_interrupts(cfg);
 			/* Сброс I2C */
-			regs->CR1 &= ~I2C_CR1_PE_M;
-			regs->CR1 |= I2C_CR1_PE_M;
+			cfg->regs->CR1 &= ~I2C_CR1_PE_M;
+			cfg->regs->CR1 |= I2C_CR1_PE_M;
 
 			if (data->xfered_len < data->xfer_len)
 			{
-				regs->CR2 &= ~I2C_CR2_NBYTES_M;
-				regs->CR2 |= I2C_CR2_NBYTES(0x1);
+				cfg->regs->CR2 &= ~I2C_CR2_NBYTES_M;
+				cfg->regs->CR2 |= I2C_CR2_NBYTES(0x1);
 			}
 			else
 			{
-				regs->CR1 &= ~(I2C_CR1_TXIE_M);
-				regs->CR2 |= I2C_CR2_STOP_M;
+				cfg->regs->CR1 &= ~(I2C_CR1_TXIE_M);
+				cfg->regs->CR2 |= I2C_CR2_STOP_M;
 				k_sem_give(&data->sync_sem);
 			}
 		}
 		else
 		{
-			regs->CR2 &= ~I2C_CR2_NBYTES_M;
+			cfg->regs->CR2 &= ~I2C_CR2_NBYTES_M;
 			/* Подготовка перед отправкой */
 		
 			if ((data->xfer_len - data->xfered_len) <= I2C_NBYTE_MAX)
 			{
-				regs->CR2 &= ~I2C_CR2_NBYTES_M;
-				regs->CR2 |= I2C_CR2_NBYTES(data->xfer_len - data->xfered_len);
-				regs->CR2 &= ~I2C_CR2_RELOAD_M;
-				regs->CR2 &= ~I2C_CR2_AUTOEND_M;
+				cfg->regs->CR2 &= ~I2C_CR2_NBYTES_M;
+				cfg->regs->CR2 |= I2C_CR2_NBYTES(data->xfer_len - data->xfered_len);
+				cfg->regs->CR2 &= ~I2C_CR2_RELOAD_M;
+				cfg->regs->CR2 &= ~I2C_CR2_AUTOEND_M;
 				//regs->CR2 |= I2C_AUTOEND_DISABLE << I2C_CR2_AUTOEND_S;
 			}
 			else /* DataSize > 255 */
 			{
-				regs->CR2 &= ~I2C_CR2_NBYTES_M;
-				regs->CR2 |= I2C_CR2_NBYTES(I2C_NBYTE_MAX);
+				cfg->regs->CR2 &= ~I2C_CR2_NBYTES_M;
+				cfg->regs->CR2 |= I2C_CR2_NBYTES(I2C_NBYTE_MAX);
 				/* При RELOAD = 1 AUTOEND игнорируется */
-				regs->CR2 |= I2C_CR2_RELOAD_M;
+				cfg->regs->CR2 |= I2C_CR2_RELOAD_M;
 			}
 		}
 	}
 
 	if ((status & I2C_ISR_TC_M) && (int_mask & I2C_CR1_TCIE_M)) {
-		hi2c->State = HAL_I2C_STATE_END;
+		cfg->regs->CR1 &= ~(I2C_CR1_TXIE_M);
+		cfg->regs->CR2 |= I2C_CR2_STOP_M;
+		k_sem_give(&data->sync_sem);
 	}
 
 	if (data->errs != 0U) {
 		/* Enter stop condition */
-		regs->CR2 |= I2C_CR2_STOP_M;
+		cfg->regs->CR2 |= I2C_CR2_STOP_M;
 
 		k_sem_give(&data->sync_sem);
 	}
@@ -251,7 +267,6 @@ static void i2c_mik32_xfer_begin(const struct device *dev)
 {
 	struct i2c_mik32_data *data = dev->data;
 	const struct i2c_mik32_config *cfg = dev->config;
-	I2C_TypeDef *regs = cfg->regs;
 
 	k_sem_reset(&data->sync_sem);
 
@@ -261,40 +276,39 @@ static void i2c_mik32_xfer_begin(const struct device *dev)
 
 	i2c_mik32_disable_interrupts(cfg);
 	if ((data->xfer_len - data->xfered_len) <= I2C_NBYTE_MAX) {
-		regs->CR2 &= ~I2C_CR2_NBYTES_M;
-		regs->CR2 |= I2C_CR2_NBYTES(data->xfer_len - data->xfered_len);
-		regs->CR2 &= ~I2C_CR2_RELOAD_M;
-		regs->CR2 &= ~I2C_CR2_AUTOEND_M;
+		cfg->regs->CR2 &= ~I2C_CR2_NBYTES_M;
+		cfg->regs->CR2 |= I2C_CR2_NBYTES(data->xfer_len - data->xfered_len);
+		cfg->regs->CR2 &= ~I2C_CR2_RELOAD_M;
+		cfg->regs->CR2 &= ~I2C_CR2_AUTOEND_M;
 		//regs->CR2 |= I2C_AUTOEND_DISABLE << I2C_CR2_AUTOEND_S;
 	} else {
-		regs->CR2 &= ~I2C_CR2_NBYTES_M;
-		regs->CR2 |= I2C_CR2_NBYTES(I2C_NBYTE_MAX);
+		cfg->regs->CR2 &= ~I2C_CR2_NBYTES_M;
+		cfg->regs->CR2 |= I2C_CR2_NBYTES(I2C_NBYTE_MAX);
 		/* При RELOAD = 1 AUTOEND игнорируется */
-		regs->CR2 |= I2C_CR2_RELOAD_M;
+		cfg->regs->CR2 |= I2C_CR2_RELOAD_M;
 	}
 
 	if (data->current->flags & I2C_MSG_READ) {
-		regs->CR2 |= I2C_CR2_RD_WRN_M;
+		cfg->regs->CR2 |= I2C_CR2_RD_WRN_M;
 		i2c_mik32_enable_rx_interrupts(cfg);
 	} else {
-		regs->CR2 &= ~I2C_CR2_RD_WRN_M;
+		cfg->regs->CR2 &= ~I2C_CR2_RD_WRN_M;
 		i2c_mik32_enable_tx_interrupts(cfg);
 	}
 
 	/* Enter start condition */
-	regs->CR2 |= I2C_CR2_START_M;
+	cfg->regs->CR2 |= I2C_CR2_START_M;
 }
 
 static int i2c_mik32_xfer_end(const struct device *dev)
 {
-	struct i2c_gd32_data *data = dev->data;
-	const struct i2c_gd32_config *cfg = dev->config;
-	I2C_TypeDef *regs = cfg->regs;
+	struct i2c_mik32_data *data = dev->data;
+	const struct i2c_mik32_config *cfg = dev->config;
 
 	i2c_mik32_disable_interrupts(cfg);
 
 	/* Wait for stop condition is done. */
-	while (regs->ISR & I2C_ISR_BUSY_M) {
+	while (cfg->regs->ISR & I2C_ISR_BUSY_M) {
 		/* NOP */
 	}
 
@@ -305,14 +319,13 @@ static int i2c_mik32_xfer_end(const struct device *dev)
 	return 0;
 }
 
-static int i2c_mik32_msg_write(const struct device *dev)
+static int i2c_mik32_msg_rw(const struct device *dev)
 {
 	struct i2c_mik32_data *data = dev->data;
 	const struct i2c_mik32_config *cfg = dev->config;
-	I2C_TypeDef *regs = cfg->regs;
 
-	if (regs->ISR & I2C_ISR_BUSY_M) {
-		data->errs = I2C_MIK32_ERR_BUSY;
+	if (cfg->regs->ISR & I2C_ISR_BUSY_M) {
+		data->errs = I2C_ERROR_STOP;
 		return -EBUSY;
 	}
 
@@ -330,7 +343,6 @@ static int i2c_mik32_transfer(const struct device *dev,
 {
 	struct i2c_mik32_data *data = dev->data;
 	const struct i2c_mik32_config *cfg = dev->config;
-	I2C_TypeDef *regs = cfg->regs;
 	struct i2c_msg *current, *next;
 	uint8_t itr;
 	int err = 0;
@@ -373,15 +385,15 @@ static int i2c_mik32_transfer(const struct device *dev,
 	k_sem_take(&data->bus_mutex, K_FOREVER);
 
 	/* Enable i2c device */
-	regs->CR1 |= I2C_CR1_PE_M;
+	cfg->regs->CR1 |= I2C_CR1_PE_M;
 
 	if (data->dev_config & I2C_ADDR_10_BITS) {
-		regs->CR2 |= I2C_CR2_ADD10_M;
-		regs->CR2 &= ~I2C_CR2_HEAD10R_M; /* ведущий отправляет полную последовательность для чтения для 10 битного адреса */
-		regs->CR2 |= (addr & 0x3FF) << I2C_CR2_SADD_S;
+		cfg->regs->CR2 |= I2C_CR2_ADD10_M;
+		cfg->regs->CR2 &= ~I2C_CR2_HEAD10R_M; /* ведущий отправляет полную последовательность для чтения для 10 битного адреса */
+		cfg->regs->CR2 |= (addr & 0x3FF) << I2C_CR2_SADD_S;
 	} else {
-		regs->CR2 &= ~I2C_CR2_ADD10_M;
-		regs->CR2 |= ((addr & 0x7F) << 1) << I2C_CR2_SADD_S;
+		cfg->regs->CR2 &= ~I2C_CR2_ADD10_M;
+		cfg->regs->CR2 |= ((addr & 0x7F) << 1) << I2C_CR2_SADD_S;
 	}
 
 	for (uint8_t i = 0; i < num_msgs; i = itr) {
@@ -397,9 +409,9 @@ static int i2c_mik32_transfer(const struct device *dev,
 		}
 
 		if (data->current->flags & I2C_MSG_READ) {
-			err = i2c_mik32_msg_read(dev);
+			err = i2c_mik32_msg_rw(dev);
 		} else {
-			err = i2c_mik32_msg_write(dev);
+			err = i2c_mik32_msg_rw(dev);
 		}
 
 		if (err < 0) {
@@ -409,7 +421,7 @@ static int i2c_mik32_transfer(const struct device *dev,
 	}
 
 	/* Disable I2C device */
-	I2C_CTL0(cfg->reg) &= ~I2C_CTL0_I2CEN;
+	cfg->regs->CR1 &= ~I2C_CR1_PE_M;
 
 	k_sem_give(&data->bus_mutex);
 
@@ -421,39 +433,34 @@ static int i2c_mik32_configure(const struct device *dev,
 {
 	struct i2c_mik32_data *data = dev->data;
 	const struct i2c_mik32_config *cfg = dev->config;
-	I2C_TypeDef *regs = cfg->regs;
-	uint32_t freq;
+	clock_control_subsys_t clock_sys = (clock_control_subsys_t)&cfg->clkid;
+	uint32_t clock_rate;
 	int err = 0;
 
 	k_sem_take(&data->bus_mutex, K_FOREVER);
 
 	/* TIMING можно менять только при PE = 0 */
-	regs->CR1 &= ~I2C_CR1_PE_M;
+	cfg->regs->CR1 &= ~I2C_CR1_PE_M;
 
-	regs->CR1 &= ~I2C_CR1_ANFOFF_M;
-	regs->CR1 |= I2C_ANALOGFILTER_DISABLE << I2C_CR1_ANFOFF_S;
+	cfg->regs->CR1 &= ~I2C_CR1_ANFOFF_M;
+	cfg->regs->CR1 |= I2C_ANALOGFILTER_DISABLE << I2C_CR1_ANFOFF_S;
 
-	regs->CR1 &= ~I2C_CR1_DNF_M;
-	regs->CR1 |= I2C_CR1_DNF(I2C_DIGITALFILTER_OFF);
+	cfg->regs->CR1 &= ~I2C_CR1_DNF_M;
+	cfg->regs->CR1 |= I2C_CR1_DNF(I2C_DIGITALFILTER_OFF);
 
-	regs->CR1 &= ~I2C_CR1_NOSTRETCH_M;
-	regs->CR1 |= I2C_NOSTRETCH_DISABLE << I2C_CR1_NOSTRETCH_S;
+	cfg->regs->CR1 &= ~I2C_CR1_NOSTRETCH_M;
+	cfg->regs->CR1 |= I2C_NOSTRETCH_DISABLE << I2C_CR1_NOSTRETCH_S;
 
-	regs->CR2 &= ~I2C_CR2_AUTOEND_M;
+	cfg->regs->CR2 &= ~I2C_CR2_AUTOEND_M;
 	//regs->CR2 |= I2C_AUTOEND_DISABLE << I2C_CR2_AUTOEND_S;
 
+	err = clock_control_get_rate(cfg->clock_dev, clock_sys, &clock_rate);
+	if (err != 0) {
+		return err;
+	}
 
-	(void)clock_control_get_rate(MIK32_CLOCK_CONTROLLER,
-				     (clock_control_subsys_t)&cfg->clkid,
-				     &pclk1);
-
-	/* i2c clock frequency, us */
-	freq = pclk1 / 1000000U;
-	if (freq > I2CCLK_MAX) {
-		LOG_ERR("I2C max clock freq %u, current is %u\n",
-			I2CCLK_MAX, freq);
-		err = -ENOTSUP;
-		goto error;
+	if (I2C_SPEED_GET(dev_config) != I2C_SPEED_STANDARD) {
+		LOG_WRN("Only standard speed is implemented");
 	}
 
 	switch (I2C_SPEED_GET(dev_config)) {
@@ -462,15 +469,8 @@ static int i2c_mik32_configure(const struct device *dev,
 	case I2C_SPEED_FAST_PLUS:
 #endif
 	case I2C_SPEED_STANDARD:
-		if (freq < I2CCLK_MIN) {
-			LOG_ERR("I2C standard-mode min clock freq %u, current is %u\n",
-				I2CCLK_MIN, freq);
-			err = -ENOTSUP;
-			goto error;
-		}
-
 		/* Standard-mode risetime maximum value: 1000ns */
-		regs->TIMINGR = I2C_TIMINGR_SCLDEL(15) | I2C_TIMINGR_SDADEL(15) | I2C_TIMINGR_SCLL(15) | I2C_TIMINGR_SCLH(15) | I2C_TIMINGR_PRESC(5);
+		cfg->regs->TIMINGR = I2C_TIMINGR_SCLDEL(15) | I2C_TIMINGR_SDADEL(15) | I2C_TIMINGR_SCLL(15) | I2C_TIMINGR_SCLH(15) | I2C_TIMINGR_PRESC(5);
 		break;
 	default:
 		err = -EINVAL;
@@ -496,6 +496,7 @@ static int i2c_mik32_init(const struct device *dev)
 {
 	struct i2c_mik32_data *data = dev->data;
 	const struct i2c_mik32_config *cfg = dev->config;
+	clock_control_subsys_t clock_sys = (clock_control_subsys_t)&cfg->clkid;
 	uint32_t bitrate_cfg;
 	int err;
 
@@ -510,8 +511,7 @@ static int i2c_mik32_init(const struct device *dev)
 	/* Sync semaphore to sync i2c state between isr and transfer api. */
 	k_sem_init(&data->sync_sem, 0, K_SEM_MAX_LIMIT);
 
-	(void)clock_control_on(MIK32_CLOCK_CONTROLLER,
-			       (clock_control_subsys_t)&cfg->clkid);
+	(void)clock_control_on(cfg->clock_dev, clock_sys);
 
 	cfg->irq_cfg_func();
 
@@ -523,28 +523,29 @@ static int i2c_mik32_init(const struct device *dev)
 }
 
 #define I2C_MIK32_INIT(idx)							\
-	PINCTRL_DT_IDX_DEFINE(idx);						\
+	PINCTRL_DT_INST_DEFINE(idx);						\
 	static void i2c_mik32_irq_cfg_func_##idx(void)				\
 	{									\
-		IRQ_CONNECT(DT_IDX_IRQ_BY_NAME(idx, event, irq),		\
-			    DT_IDX_IRQ_BY_NAME(idx, event, priority),		\
-			    i2c_mik32_event_isr,				\
-			    DEVICE_DT_IDX_GET(idx),				\
+		IRQ_CONNECT(DT_INST_IRQN(idx),				        \
+			    DT_INST_IRQ(idx, 0),         			\
+			    i2c_mik32_isr,      				\
+			    DEVICE_DT_INST_GET(idx),				\
 			    0);							\
-		irq_enable(DT_IDX_IRQ_BY_NAME(idx, event, irq));		\
+		irq_enable(DT_INST_IRQN(idx));   				\
 	}									\
 	static struct i2c_mik32_data i2c_mik32_data_##idx;			\
 	const static struct i2c_mik32_config i2c_mik32_cfg_##idx = {		\
-		.regs = (I2C_TypeDef *)DT_IDX_REG_ADDR(idx),			\
-		.bitrate = DT_IDX_PROP(idx, clock_frequency),			\
-		.clkid = DT_IDX_CLOCKS_CELL(idx, id),				\
-		.pcfg = PINCTRL_DT_IDX_DEV_CONFIG_GET(idx),			\
+		.regs = (I2C_TypeDef *)DT_INST_REG_ADDR(idx),			\
+		.bitrate = DT_INST_PROP(idx, clock_frequency),			\
+		.clock_dev = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(idx)),	        \
+		.clkid = DT_INST_CLOCKS_CELL(idx, id),				\
+		.pcfg = PINCTRL_DT_INST_DEV_CONFIG_GET(idx),			\
 		.irq_cfg_func = i2c_mik32_irq_cfg_func_##idx,			\
 	};									\
-	I2C_DEVICE_DT_IDX_DEFINE(idx,						\
+	I2C_DEVICE_DT_INST_DEFINE(idx,						\
 				  i2c_mik32_init, NULL,				\
 				  &i2c_mik32_data_##idx, &i2c_mik32_cfg_##idx,	\
 				  POST_KERNEL, CONFIG_I2C_INIT_PRIORITY,	\
-				  &i2c_mik32_driver_api);			\
+				  &i2c_mik32_driver_api);
 
 DT_INST_FOREACH_STATUS_OKAY(I2C_MIK32_INIT)
