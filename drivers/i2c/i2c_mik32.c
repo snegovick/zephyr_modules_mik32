@@ -17,6 +17,8 @@
 #include <zephyr/drivers/i2c.h>
 #include <zephyr/dt-bindings/i2c/i2c.h>
 
+#include <zephyr/soc/mik32_epic.h>
+
 #include <zephyr/logging/log.h>
 #include <zephyr/irq.h>
 LOG_MODULE_REGISTER(i2c_mik32, CONFIG_I2C_LOG_LEVEL);
@@ -84,8 +86,9 @@ static inline void i2c_mik32_disable_interrupts(const struct i2c_mik32_config  *
 	cfg->regs->CR1 &= ~I2C_INTMASK;
 }
 
-static void i2c_mik32_isr(const struct device *dev)
+static void i2c_mik32_isr(const void *param)
 {
+  const struct device *dev = (const struct device *)param;
 	struct i2c_mik32_data *data = dev->data;
 	const struct i2c_mik32_config *cfg = dev->config;
 
@@ -522,30 +525,26 @@ static int i2c_mik32_init(const struct device *dev)
 	return 0;
 }
 
-#define I2C_MIK32_INIT(idx)							\
-	PINCTRL_DT_INST_DEFINE(idx);						\
-	static void i2c_mik32_irq_cfg_func_##idx(void)				\
-	{									\
-		IRQ_CONNECT(DT_INST_IRQN(idx),				        \
-			    DT_INST_IRQ(idx, 0),         			\
-			    i2c_mik32_isr,      				\
-			    DEVICE_DT_INST_GET(idx),				\
-			    0);							\
-		irq_enable(DT_INST_IRQN(idx));   				\
-	}									\
-	static struct i2c_mik32_data i2c_mik32_data_##idx;			\
-	const static struct i2c_mik32_config i2c_mik32_cfg_##idx = {		\
-		.regs = (I2C_TypeDef *)DT_INST_REG_ADDR(idx),			\
-		.bitrate = DT_INST_PROP(idx, clock_frequency),			\
-		.clock_dev = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(idx)),	        \
-		.clkid = DT_INST_CLOCKS_CELL(idx, id),				\
-		.pcfg = PINCTRL_DT_INST_DEV_CONFIG_GET(idx),			\
-		.irq_cfg_func = i2c_mik32_irq_cfg_func_##idx,			\
-	};									\
-	I2C_DEVICE_DT_INST_DEFINE(idx,						\
-				  i2c_mik32_init, NULL,				\
-				  &i2c_mik32_data_##idx, &i2c_mik32_cfg_##idx,	\
-				  POST_KERNEL, CONFIG_I2C_INIT_PRIORITY,	\
-				  &i2c_mik32_driver_api);
+#define I2C_MIK32_INIT(idx)                                             \
+	PINCTRL_DT_INST_DEFINE(idx);                                          \
+	static void i2c_mik32_irq_cfg_func_##idx(void)                        \
+	{                                                                     \
+    mik32_irq_connect_dynamic(DT_INST_IRQN(idx), 0, &i2c_mik32_isr, DEVICE_DT_INST_GET(idx), 0); \
+		irq_enable(DT_INST_IRQN(idx));                                      \
+	}                                                                     \
+	static struct i2c_mik32_data i2c_mik32_data_##idx;                    \
+	const static struct i2c_mik32_config i2c_mik32_cfg_##idx = {          \
+		.regs = (I2C_TypeDef *)DT_INST_REG_ADDR(idx),                       \
+		.bitrate = DT_INST_PROP(idx, clock_frequency),                      \
+		.clock_dev = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(idx)),               \
+		.clkid = DT_INST_CLOCKS_CELL(idx, id),                              \
+		.pcfg = PINCTRL_DT_INST_DEV_CONFIG_GET(idx),                        \
+		.irq_cfg_func = i2c_mik32_irq_cfg_func_##idx,                       \
+	};                                                                    \
+	I2C_DEVICE_DT_INST_DEFINE(idx,                                        \
+                            i2c_mik32_init, NULL,                       \
+                            &i2c_mik32_data_##idx, &i2c_mik32_cfg_##idx, \
+                            POST_KERNEL, CONFIG_I2C_INIT_PRIORITY,      \
+                            &i2c_mik32_driver_api);
 
 DT_INST_FOREACH_STATUS_OKAY(I2C_MIK32_INIT)

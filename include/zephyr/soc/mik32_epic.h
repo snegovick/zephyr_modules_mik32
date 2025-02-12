@@ -58,4 +58,8 @@ typedef struct
         volatile uint32_t RAW_STATUS;           // 0x20  
 } EPIC_TypeDef;
 
+int mik32_irq_connect_dynamic(unsigned int	irq, unsigned int	priority, void(* routine )(const void *dev), const void * parameter, uint32_t flags);
+
+int mik32_irq_disconnect_dynamic (unsigned int irq);
+
 #endif/*__MIK32_EPIC_H*/
