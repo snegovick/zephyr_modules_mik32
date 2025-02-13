@@ -185,11 +185,11 @@ static int spi_mik32_configure(const struct device *dev,
 
   printk("operation: 0x%x\n", config->operation);
 	if (config->operation & SPI_MODE_CPOL) {
-		//spi_config |= SPI_CONFIG_CLK_POL_M;
+		spi_config |= SPI_CONFIG_CLK_POL_M;
 	}
 
 	if (config->operation & SPI_MODE_CPHA) {
-		//spi_config |= SPI_CONFIG_CLK_PH_M;
+		spi_config |= SPI_CONFIG_CLK_PH_M;
 	}
 
 	(void)clock_control_get_rate(MIK32_CLOCK_CONTROLLER,
@@ -296,7 +296,6 @@ static int spi_mik32_transceive_impl(const struct device *dev,
 		_spi_set_cs(regs, config->slave);
 	}
 #endif
-
 
 #ifdef CONFIG_SPI_MIK32_INTERRUPT
 	ret = spi_context_wait_for_completion(&data->ctx);
@@ -457,7 +456,7 @@ int spi_mik32_init(const struct device *dev)
 #define MIK32_IRQ_CONFIGURE(idx)                                        \
 	static void spi_mik32_irq_configure_##idx(void)                       \
 	{                                                                     \
-    mik32_irq_connect_dynamic(DT_INST_IRQN(idx), 0, &spi_mik32_isr, DEVICE_DT_INST_GET(idx), 0); \
+		mik32_irq_connect_dynamic(DT_INST_IRQN(idx), 0, &spi_mik32_isr, DEVICE_DT_INST_GET(idx), 0); \
 		irq_enable(DT_INST_IRQN(idx));                                      \
 	}
 
