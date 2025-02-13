@@ -13,7 +13,6 @@
 #include <zephyr/kernel.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/pinctrl.h>
-#include <zephyr/drivers/reset.h>
 #include <zephyr/drivers/i2c.h>
 #include <zephyr/dt-bindings/i2c/i2c.h>
 
@@ -30,7 +29,6 @@ struct i2c_mik32_config {
 	const struct device *clock_dev;
 	uint32_t bitrate;
 	uint16_t clkid;
-	struct reset_dt_spec reset;
 	const struct pinctrl_dev_config *pcfg;
 	void (*irq_cfg_func)(void);
 };
