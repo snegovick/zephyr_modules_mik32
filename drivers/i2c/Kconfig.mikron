@@ -1,4 +1,4 @@
-# Copyright (c) 2025
+# Copyright (c) 2025 Excave.ru
 # SPDX-License-Identifier: Apache-2.0
 
 config I2C_MIK32
