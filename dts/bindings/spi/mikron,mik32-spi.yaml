@@ -5,16 +5,13 @@ description: Mikron MIK32 SPI
 
 compatible: "mikron,mik32-spi"
 
-include: [spi-controller.yaml, reset-device.yaml, pinctrl-device.yaml]
+include: [spi-controller.yaml, pinctrl-device.yaml]
 
 properties:
   reg:
     required: true
 
   interrupts:
-    required: true
-
-  resets:
     required: true
 
   clocks:

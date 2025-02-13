@@ -13,6 +13,7 @@
 #include <zephyr/drivers/pinctrl.h>
 #include <zephyr/drivers/spi.h>
 #include <zephyr/drivers/spi/rtio.h>
+#include <zephyr/soc/mik32_epic.h>
 
 #include "spi_mik32.h"
 
@@ -20,14 +21,14 @@
 #include <zephyr/irq.h>
 LOG_MODULE_REGISTER(spi_mik32);
 
-#include "spi_context.h"
+#include <zephyr/../../drivers/spi/spi_context.h>
 
 #define MIK32_SPI_PSC_MAX 0x7U
 
 struct spi_mik32_config {
 	SPI_TypeDef * regs;
+	const struct device *clock_dev;
 	uint16_t clkid;
-	struct reset_dt_spec reset;
 	const struct pinctrl_dev_config *pcfg;
 #ifdef CONFIG_SPI_MIK32_INTERRUPT
 	void (*irq_configure)();
@@ -58,17 +59,17 @@ static bool spi_mik32_transfer_ongoing(struct spi_mik32_data *data)
 
 static inline void _spi_clear_txfifo(SPI_TypeDef *regs)
 {
-	regs->ENABLE |= SPI_ENABLE_CLEAR_TX_FIFO_M;
+	regs->ENABLE = SPI_ENABLE_CLEAR_TX_FIFO_M;
 }
 
 static inline void _spi_clear_rxfifo(SPI_TypeDef *regs)
 {
-	regs->ENABLE |= SPI_ENABLE_CLEAR_RX_FIFO_M;
+	regs->ENABLE = SPI_ENABLE_CLEAR_RX_FIFO_M;
 }
 
 static inline void _spi_disable(SPI_TypeDef *regs)
 {
-	regs->ENABLE &= ~SPI_ENABLE_M;
+	regs->ENABLE = 0;
 }
 
 static inline void _spi_clear_ints(SPI_TypeDef *regs)
@@ -104,11 +105,12 @@ static inline void _spi_disable_clear_errors(SPI_TypeDef *regs)
 
 static inline void _spi_enable(SPI_TypeDef *regs)
 {
-	regs->ENABLE |= SPI_ENABLE_M;
+	regs->ENABLE = SPI_ENABLE_M;
 }
 
 static inline void _spi_set_cs(SPI_TypeDef *regs, uint32_t cs)
 {
+  printk("cs: %i\n", cs);
 	switch (cs) {
 	case 0:
 		regs->CONFIG |= SPI_CONFIG_CS_0_M;
@@ -122,8 +124,30 @@ static inline void _spi_set_cs(SPI_TypeDef *regs, uint32_t cs)
 	case 3:
 		regs->CONFIG |= SPI_CONFIG_CS_3_M;
 		break;
+  default:
+    LOG_ERR("Unknown CS %i\n", cs);
+    break;
 	}
 }
+
+static void _spi_delay_btwn(SPI_TypeDef *regs, uint8_t btwn)
+{
+    regs->DELAY &= ~SPI_DELAY_BTWN_M;
+    regs->DELAY |= SPI_DELAY_BTWN(btwn);
+}
+
+static void _spi_delay_after(SPI_TypeDef *regs, uint8_t after)
+{
+    regs->DELAY &= ~SPI_DELAY_AFTER_M;
+    regs->DELAY |= SPI_DELAY_AFTER(after);
+}
+
+static void _spi_delay_init(SPI_TypeDef *regs, uint8_t init)
+{
+    regs->DELAY &= ~SPI_DELAY_INIT_M;
+    regs->DELAY |= SPI_DELAY_INIT(init);
+}
+
 
 static int spi_mik32_configure(const struct device *dev,
 			      const struct spi_config *config)
@@ -132,6 +156,7 @@ static int spi_mik32_configure(const struct device *dev,
 	const struct spi_mik32_config *cfg = dev->config;
 	SPI_TypeDef *regs = cfg->regs;
 	uint32_t spi_config = 0;
+  uint32_t bus_freq;
 
 	if (spi_context_configured(&data->ctx, config)) {
 		return 0;
@@ -158,12 +183,13 @@ static int spi_mik32_configure(const struct device *dev,
 		spi_config |= SPI_CS_NONE << SPI_CONFIG_CS_S;
 	}
 
+  printk("operation: 0x%x\n", config->operation);
 	if (config->operation & SPI_MODE_CPOL) {
-		spi_config |= SPI_CONFIG_CLK_POL_M;		
+		//spi_config |= SPI_CONFIG_CLK_POL_M;
 	}
 
 	if (config->operation & SPI_MODE_CPHA) {
-		spi_config |= SPI_CONFIG_CLK_PH_M;
+		//spi_config |= SPI_CONFIG_CLK_PH_M;
 	}
 
 	(void)clock_control_get_rate(MIK32_CLOCK_CONTROLLER,
@@ -181,46 +207,50 @@ static int spi_mik32_configure(const struct device *dev,
 
 	regs->CONFIG = spi_config;
 
+  _spi_delay_btwn(regs, 1);
+  _spi_delay_after(regs, 0);
+  _spi_delay_init(regs, 2);
+
 	data->ctx.config = config;
 
 	return 0;
 }
 
-static int spi_mik32_frame_exchange(const struct device *dev)
+#ifndef CONFIG_SPI_MIK32_INTERRUPT
+static inline int spi_mik32_frame_exchange(const struct device *dev)
 {
 	struct spi_mik32_data *data = dev->data;
 	const struct spi_mik32_config *cfg = dev->config;
 	struct spi_context *ctx = &data->ctx;
 	SPI_TypeDef *regs = cfg->regs;
-	uint16_t tx_frame = 0U, rx_frame = 0U;
+	uint16_t tx_frame = 0U;
+  uint16_t rx_frame = 0U;
+
 	volatile uint32_t status = regs->INT_STATUS;
-
-	while ((status & SPI_INT_STATUS_TX_FIFO_NOT_FULL_M) == 0) {
-		status = regs->INT_STATUS;
+	if (status & SPI_INT_STATUS_TX_FIFO_NOT_FULL_M) {
+    if (spi_context_tx_buf_on(ctx)) {
+      tx_frame = UNALIGNED_GET((uint8_t *)(data->ctx.tx_buf));
+    } else {
+      tx_frame = 0;
+    }
+    regs->TXDATA = tx_frame;
+    spi_context_update_tx(ctx, 1, 1);
 	}
-
-	if (spi_context_tx_buf_on(ctx)) {
-		tx_frame = UNALIGNED_GET((uint8_t *)(data->ctx.tx_buf));
-	}
-	regs->TXDATA = tx_frame;
-	
-	spi_context_update_tx(ctx, 1, 1);
 
 	status = regs->INT_STATUS;
-	while ((status & SPI_INT_STATUS_RX_FIFO_NOT_EMPTY_M) == 0) {
-		status = regs->INT_STATUS;
-	}
+	if (status & SPI_INT_STATUS_RX_FIFO_NOT_EMPTY_M) {
+    rx_frame = regs->RXDATA;
+    if (spi_context_rx_buf_on(ctx)) {
+      UNALIGNED_PUT(rx_frame, (uint8_t *)data->ctx.rx_buf);
+    }
 
-	rx_frame = regs->RXDATA;
-	if (spi_context_rx_buf_on(ctx)) {
-		UNALIGNED_PUT(rx_frame, (uint8_t *)data->ctx.rx_buf);
+    spi_context_update_rx(ctx, 1, 1);
 	}
-
-	spi_context_update_rx(ctx, 1, 1);
 
 	status = regs->INT_STATUS;
 	return spi_mik32_get_err(cfg, status);
 }
+#endif/*CONFIG_SPI_MIK32_INTERRUPT*/
 
 static int spi_mik32_transceive_impl(const struct device *dev,
 				     const struct spi_config *config,
@@ -243,18 +273,34 @@ static int spi_mik32_transceive_impl(const struct device *dev,
 
 	spi_context_buffers_setup(&data->ctx, tx_bufs, rx_bufs, 1);
 
+#ifdef CONFIG_SPI_MIK32_INTERRUPT
+  int len = spi_context_longest_current_buf(&data->ctx);
+  if (len >= 8) {
+    regs->TX_THR = 8;
+  } else {
+    regs->TX_THR = len;
+  }
+	_spi_enable_ints(regs);
 	if (spi_cs_is_gpio(config)) {
-		_spi_enable(regs);
 		spi_context_cs_control(&data->ctx, true);
 	} else {
-		_spi_set_cs(data->config->slave);
+		_spi_set_cs(regs, config->slave);
 	}
+  _spi_enable(regs);
+#else
+  regs->TX_THR = 1;
+  _spi_enable(regs);
+	if (spi_cs_is_gpio(config)) {
+		spi_context_cs_control(&data->ctx, true);
+	} else {
+		_spi_set_cs(regs, config->slave);
+	}
+#endif
+
 
 #ifdef CONFIG_SPI_MIK32_INTERRUPT
-	_spi_enable_ints(regs);
 	ret = spi_context_wait_for_completion(&data->ctx);
 #else
-	regs->TX_THR = 1;
 	do {
 		ret = spi_mik32_frame_exchange(dev);
 		if (ret < 0) {
@@ -315,10 +361,12 @@ static void spi_mik32_complete(const struct device *dev, int status)
 	spi_context_complete(&data->ctx, dev, status);
 }
 
-static void spi_mik32_isr(struct device *dev)
+static void spi_mik32_isr(const void *param)
 {
+  const struct device *dev = (const struct device *)param;
 	const struct spi_mik32_config *cfg = dev->config;
 	struct spi_mik32_data *data = dev->data;
+  struct spi_context *ctx = &data->ctx;
 	SPI_TypeDef *regs = cfg->regs;
 	int err = 0;
 
@@ -381,16 +429,16 @@ int spi_mik32_init(const struct device *dev)
 {
 	struct spi_mik32_data *data = dev->data;
 	const struct spi_mik32_config *cfg = dev->config;
+  clock_control_subsys_t clock_sys = (clock_control_subsys_t)&cfg->clkid;
 	int ret;
-
-	(void)clock_control_on(MIK32_CLOCK_CONTROLLER,
-			       (clock_control_subsys_t)&cfg->clkid);
 
 	ret = pinctrl_apply_state(cfg->pcfg, PINCTRL_STATE_DEFAULT);
 	if (ret) {
 		LOG_ERR("Failed to apply pinctrl state");
 		return ret;
 	}
+
+  (void)clock_control_on(cfg->clock_dev, clock_sys);
 
 	ret = spi_context_cs_configure_all(&data->ctx);
 	if (ret < 0) {
@@ -406,32 +454,30 @@ int spi_mik32_init(const struct device *dev)
 	return 0;
 }
 
-#define MIK32_IRQ_CONFIGURE(idx)					   \
-	static void spi_mik32_irq_configure_##idx(void)			   \
-	{								   \
-		IRQ_CONNECT(DT_INST_IRQN(idx), DT_INST_IRQ(idx, priority), \
-			    spi_mik32_isr,				   \
-			    DEVICE_DT_INST_GET(idx), 0);		   \
-		irq_enable(DT_INST_IRQN(idx));				   \
+#define MIK32_IRQ_CONFIGURE(idx)                                        \
+	static void spi_mik32_irq_configure_##idx(void)                       \
+	{                                                                     \
+    mik32_irq_connect_dynamic(DT_INST_IRQN(idx), 0, &spi_mik32_isr, DEVICE_DT_INST_GET(idx), 0); \
+		irq_enable(DT_INST_IRQN(idx));                                      \
 	}
 
-#define MIK32_SPI_INIT(idx)						       \
-	PINCTRL_DT_INST_DEFINE(idx);					       \
-	IF_ENABLED(CONFIG_SPI_MIK32_INTERRUPT, (MIK32_IRQ_CONFIGURE(idx)));    \
-	static struct spi_mik32_data spi_mik32_data_##idx = {		       \
-		SPI_CONTEXT_INIT_LOCK(spi_mik32_data_##idx, ctx),	       \
-		SPI_CONTEXT_INIT_SYNC(spi_mik32_data_##idx, ctx),	       \
-		SPI_CONTEXT_CS_GPIOS_INITIALIZE(DT_DRV_INST(idx), ctx) };      \
-	static struct spi_mik32_config spi_mik32_config_##idx = {              \
-		.divisor = DT_INST_PROP(idx, divider),		               \
-		.regs = (SPI_TypeDef *)DT_INST_REG_ADDR(idx),                  \
-		.clkid = DT_INST_CLOCKS_CELL(idx, id),			       \
-		.pcfg = PINCTRL_DT_INST_DEV_CONFIG_GET(idx),		       \
-		IF_ENABLED(CONFIG_SPI_MIK32_INTERRUPT,			       \
-			   (.irq_configure = spi_mik32_irq_configure_##idx)) }; \
-	SPI_DEVICE_DT_INST_DEFINE(idx, spi_mik32_init, NULL,		       \
-			      &spi_mik32_data_##idx, &spi_mik32_config_##idx,  \
-			      POST_KERNEL, CONFIG_SPI_INIT_PRIORITY,	       \
-			      &spi_mik32_driver_api);
+#define MIK32_SPI_INIT(idx)                                             \
+	PINCTRL_DT_INST_DEFINE(idx);                                          \
+	IF_ENABLED(CONFIG_SPI_MIK32_INTERRUPT, (MIK32_IRQ_CONFIGURE(idx)));   \
+	static struct spi_mik32_data spi_mik32_data_##idx = {                 \
+		SPI_CONTEXT_INIT_LOCK(spi_mik32_data_##idx, ctx),                   \
+		SPI_CONTEXT_INIT_SYNC(spi_mik32_data_##idx, ctx),                   \
+		SPI_CONTEXT_CS_GPIOS_INITIALIZE(DT_DRV_INST(idx), ctx) };           \
+	static struct spi_mik32_config spi_mik32_config_##idx = {             \
+		.regs = (SPI_TypeDef *)DT_INST_REG_ADDR(idx),                       \
+		.clock_dev = DEVICE_DT_GET(DT_INST_CLOCKS_CTLR(idx)),               \
+		.clkid = DT_INST_CLOCKS_CELL(idx, id),                              \
+		.pcfg = PINCTRL_DT_INST_DEV_CONFIG_GET(idx),                        \
+		IF_ENABLED(CONFIG_SPI_MIK32_INTERRUPT,                              \
+               (.irq_configure = spi_mik32_irq_configure_##idx)) };     \
+	SPI_DEVICE_DT_INST_DEFINE(idx, spi_mik32_init, NULL,                  \
+                            &spi_mik32_data_##idx, &spi_mik32_config_##idx, \
+                            POST_KERNEL, CONFIG_SPI_INIT_PRIORITY,      \
+                            &spi_mik32_driver_api);
 
 DT_INST_FOREACH_STATUS_OKAY(MIK32_SPI_INIT)

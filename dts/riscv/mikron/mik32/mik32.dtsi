@@ -127,6 +127,8 @@
 		spi0: spi@83000 {
 			compatible = "mikron,mik32-spi";
 			reg = <0x00083000 0x30>;
+			#address-cells = <1>;
+			#size-cells = <0>;
 			clock-frequency = <8000000>;
 			clocks = <&pmgr MIK32_CLOCK_SPI0>;
 			status = "disabled";
@@ -138,6 +140,8 @@
 		spi1: spi@83400 {
 			compatible = "mikron,mik32-spi";
 			reg = <0x00083400 0x30>;
+			#address-cells = <1>;
+			#size-cells = <0>;
 			clock-frequency = <8000000>;
 			clocks = <&pmgr MIK32_CLOCK_SPI1>;
 			status = "disabled";
