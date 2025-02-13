@@ -42,7 +42,7 @@ struct mik32_gpio_irq_data {
 	uint32_t irq_line_mux;
 };
 
-__unused static void mik32_gpio_irq_isr(const void *isr_data)
+__unused static void mik32_gpio_isr(const void *isr_data)
 {
 	const struct device *const dev = DEVICE_DT_INST_GET(0);
 	struct mik32_gpio_irq_data *data = dev->data;
@@ -176,10 +176,7 @@ int mik32_gpio_irq_configure(uint8_t line, mik32_gpio_irq_cb_t cb, void *user)
 
 static int mik32_gpio_irq_init(const struct device *dev)
 {
-
-	IRQ_CONNECT(EPIC_GPIO_IRQ_INDEX,
-		    0,
-		    mik32_gpio_irq_isr, 0, 0);
+  mik32_irq_connect_dynamic(EPIC_GPIO_IRQ_INDEX, 0, &mik32_gpio_isr, 0, 0);
 	return 0;
 }
 
