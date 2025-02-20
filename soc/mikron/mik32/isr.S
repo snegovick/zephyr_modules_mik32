@@ -2,7 +2,7 @@
  * Copyright (c) 2016 Jean-Paul Etienne <fractalclone@gmail.com>
  * Copyright (c) 2018 Foundries.io Ltd
  * Copyright (c) 2020 BayLibre, SAS
- * Copyright (c) 2025
+ * Copyright (c) 2025 Excave.ru
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -62,7 +62,7 @@
 /* imports */
 GDATA(_sw_isr_table)
 GTEXT(__soc_handle_irq)
-GTEXT(_Fault)
+GTEXT(z_riscv_fault)
 #ifdef CONFIG_RISCV_SOC_CONTEXT_SAVE
 GTEXT(__soc_save_context)
 GTEXT(__soc_restore_context)
@@ -168,7 +168,7 @@ SECTION_FUNC(exception.entry, _isr_wrapper)
 
 	/*
 	 * If the exception is the result of an ECALL, check whether to
-	 * perform a context-switch or an IRQ offload. Otherwise call _Fault
+	 * perform a context-switch or an IRQ offload. Otherwise call z_riscv_fault
 	 * to report the exception.
 	 */
 	csrr t0, mcause
@@ -183,15 +183,15 @@ SECTION_FUNC(exception.entry, _isr_wrapper)
 	beq t0, t1, is_kernel_syscall
 
 	/*
-	 * Call _Fault to handle exception.
+	 * Call z_riscv_fault to handle exception.
 	 * Stack pointer is pointing to a struct_arch_esf structure, pass it
-	 * to _Fault (via register a0).
-	 * If _Fault shall return, set return address to
+	 * to z_riscv_fault (via register a0).
+	 * If z_riscv_fault shall return, set return address to
 	 * no_reschedule to restore stack.
-	*/
+	 */
 	mv a0, sp
 	la ra, no_reschedule
-	tail _Fault
+	tail z_riscv_fault
 
 is_kernel_syscall:
 	/*
