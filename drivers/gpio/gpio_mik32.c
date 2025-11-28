@@ -58,22 +58,22 @@ static inline int gpio_mik32_configure(const struct device *port, gpio_pin_t pin
 	const struct gpio_mik32_config *config = port->config;
 
 	uint32_t pupd;
-	uint32_t ds;
+	//uint32_t ds;
 	uint32_t cfg;
 	uint32_t dirin;
 	uint32_t dirout;
 
 	pupd = MIK32_PAD_PUPD(config->reg);
 	cfg = MIK32_PAD_CFG(config->reg);
-	ds = MIK32_PAD_DS(config->reg);
-	dirin = MIK32_GPIO_DIRIN(config->reg);
-	dirout = MIK32_GPIO_DIROUT(config->reg);
+	//ds = MIK32_PAD_DS(config->reg);
+	dirin = 0;//MIK32_GPIO_DIRIN(config->reg);
+	dirout = 0;//MIK32_GPIO_DIROUT(config->reg);
 
 	if ((flags & GPIO_OUTPUT) != 0U) {
 		// set mode GPIO
 		cfg &= ~(0x3 << (pin * 2));
 		// set direction output
-		dirout |= (1 << pin);
+		dirout |= BIT(pin);
 
 		if ((flags & GPIO_OUTPUT_INIT_HIGH) != 0U) {
 			MIK32_GPIO_STATE(config->reg) = BIT(pin);
@@ -84,12 +84,12 @@ static inline int gpio_mik32_configure(const struct device *port, gpio_pin_t pin
 		// set mode GPIO
 		cfg &= ~(0x3 << (pin * 2));
 		// set direction input
-		dirin |= (1 << pin);
+		dirin |= BIT(pin);
 	} else {
 		// set mode ANALOG
-		cfg |= (0x3 << pin*2);
+		cfg |= (0x3 << (pin * 2));
 		// set direction input
-		dirin |= (1 << pin);
+		dirin |= BIT(pin);
 	}
 
 	if ((flags & GPIO_PULL_UP) != 0U) {
