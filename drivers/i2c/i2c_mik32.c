@@ -46,8 +46,96 @@ struct i2c_mik32_data {
 	struct i2c_msg *current;
 	uint8_t errs;
 	bool is_restart;
+#ifdef CONFIG_I2C_TARGET
 	bool master_active;
+  struct i2c_target_config *slave_cfg;
+  bool slave_attached;
+#endif
 };
+
+#if defined(CONFIG_I2C_TARGET)
+static void mik32_i2c_slave_isr(const struct device *dev)
+{
+	const struct i2c_mik32_config *cfg = dev->config;
+	struct i2c_mik32_data *data = dev->data;
+	I2C_TypeDef *i2c = cfg->i2c;
+	const struct i2c_target_callbacks *slave_cb = data->slave_cfg->callbacks;
+}
+
+/* Attach and start I2C as slave */
+int i2c_mik32_target_register(const struct device *dev, struct i2c_target_config *config)
+{
+	const struct i2c_stm32_config *cfg = dev->config;
+	struct i2c_stm32_data *data = dev->data;
+	I2C_TypeDef *i2c = cfg->i2c;
+	uint32_t bitrate_cfg;
+	int ret;
+
+	if (!config) {
+		return -EINVAL;
+	}
+
+	if (data->slave_attached) {
+		return -EBUSY;
+	}
+
+	if (data->master_active) {
+		return -EBUSY;
+	}
+
+	bitrate_cfg = i2c_map_dt_bitrate(cfg->bitrate);
+
+	ret = i2c_mik32_runtime_configure(dev, bitrate_cfg);
+	if (ret < 0) {
+		LOG_ERR("i2c: failed to initialize");
+		return ret;
+	}
+
+	data->slave_cfg = config;
+
+	//I2C_Enable(i2c);
+
+	if (data->slave_cfg->flags == I2C_TARGET_FLAGS_ADDR_10_BITS)	{
+		return -ENOTSUP;
+	}
+	mik32_i2c_set_own_addr1(i2c, config->address << 1U);
+	data->slave_attached = true;
+
+	LOG_DBG("i2c: target registered");
+
+	mik32_i2c_enable_transfer_interrupts(dev);
+	//I2C_AcknowledgeNextData(i2c, LL_I2C_ACK);
+
+	return 0;
+}
+
+int i2c_mik32_target_unregister(const struct device *dev, struct i2c_target_config *config)
+{
+	const struct i2c_stm32_config *cfg = dev->config;
+	struct i2c_stm32_data *data = dev->data;
+	I2C_TypeDef *i2c = cfg->i2c;
+
+	if (!data->slave_attached) {
+		return -EINVAL;
+	}
+
+	if (data->master_active) {
+		return -EBUSY;
+	}
+
+	//mik32_i2c_disable_transfer_interrupts(dev);
+
+	/* if (!data->smbalert_active) { */
+	/* 	I2C_Disable(i2c); */
+	/* } */
+
+	data->slave_attached = false;
+
+	LOG_DBG("i2c: slave unregistered");
+
+	return 0;
+}
+#endif /* defined(CONFIG_I2C_TARGET) */
 
 static inline uint32_t i2c_map_dt_bitrate(uint32_t bitrate)
 {
@@ -490,6 +578,10 @@ static DEVICE_API(i2c, i2c_mik32_driver_api) = {
 	.transfer = i2c_mik32_transfer,
 #ifdef CONFIG_I2C_RTIO
 	.iodev_submit = i2c_iodev_submit_fallback,
+#endif
+#if defined(CONFIG_I2C_TARGET)
+	.target_register = i2c_mik32_target_register,
+	.target_unregister = i2c_mik32_target_unregister,
 #endif
 };
 
