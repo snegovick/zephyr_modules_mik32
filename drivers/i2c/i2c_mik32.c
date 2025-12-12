@@ -47,91 +47,139 @@ struct i2c_mik32_data {
 	uint8_t errs;
 	bool is_restart;
 #ifdef CONFIG_I2C_TARGET
-	bool master_active;
-  struct i2c_target_config *slave_cfg;
-  bool slave_attached;
+	bool controller_active;
+	struct i2c_target_config **target_cfgs;
+	int active_target;
+	int num_targets_attached;
 #endif
 };
 
 #if defined(CONFIG_I2C_TARGET)
-static void mik32_i2c_slave_isr(const struct device *dev)
-{
-	const struct i2c_mik32_config *cfg = dev->config;
-	struct i2c_mik32_data *data = dev->data;
-	I2C_TypeDef *i2c = cfg->i2c;
-	const struct i2c_target_callbacks *slave_cb = data->slave_cfg->callbacks;
+static void i2c_set_oar1(I2C_TypeDef *p, uint16_t addr) {
+	p->OAR1 = 0;
+	p->OAR1 &= ~I2C_OAR1_OA1MODE_M;
+	p->OAR1 |= ((addr & 0x7f) << 1) << I2C_OAR1_OA1_S;
+}
+
+static void i2c_enable_oar1(I2C_TypeDef *p) {
+		p->OAR1 |= I2C_OAR1_OA1EN_M;
+}
+
+static void i2c_disable_oar1(I2C_TypeDef *p) {
+	p->OAR1 &= ~(I2C_OAR1_OA1EN_M);
+}
+
+static void i2c_set_oar2(I2C_TypeDef *p, uint8_t mask, uint16_t addr) {
+	p->OAR2 = 0;
+	p->OAR2 |= mask << I2C_OAR2_OA2MSK_S;
+	p->OAR2 |= (addr & 0x7f) << I2C_OAR2_OA2_S;
+}
+
+static void i2c_enable_oar2(I2C_TypeDef *p) {
+		p->OAR2 |= I2C_OAR2_OA2EN_M;
+}
+
+static void i2c_disable_oar2(I2C_TypeDef *p) {
+	p->OAR2 &= ~(I2C_OAR2_OA2EN_M);
 }
 
 /* Attach and start I2C as slave */
 int i2c_mik32_target_register(const struct device *dev, struct i2c_target_config *config)
 {
-	const struct i2c_stm32_config *cfg = dev->config;
-	struct i2c_stm32_data *data = dev->data;
-	I2C_TypeDef *i2c = cfg->i2c;
-	uint32_t bitrate_cfg;
-	int ret;
+	const struct i2c_mik32_config *cfg = dev->config;
+	struct i2c_mik32_data *data = dev->data;
 
-	if (!config) {
-		return -EINVAL;
+	if (data->num_targets_attached >= config->max_targets) {
+		LOG_ERR("All targets are already registered");
+		return -1;
 	}
 
-	if (data->slave_attached) {
-		return -EBUSY;
-	}
-
-	if (data->master_active) {
-		return -EBUSY;
-	}
-
-	bitrate_cfg = i2c_map_dt_bitrate(cfg->bitrate);
-
-	ret = i2c_mik32_runtime_configure(dev, bitrate_cfg);
-	if (ret < 0) {
-		LOG_ERR("i2c: failed to initialize");
-		return ret;
-	}
-
-	data->slave_cfg = config;
-
-	//I2C_Enable(i2c);
-
-	if (data->slave_cfg->flags == I2C_TARGET_FLAGS_ADDR_10_BITS)	{
-		return -ENOTSUP;
-	}
-	mik32_i2c_set_own_addr1(i2c, config->address << 1U);
-	data->slave_attached = true;
-
-	LOG_DBG("i2c: target registered");
-
-	mik32_i2c_enable_transfer_interrupts(dev);
-	//I2C_AcknowledgeNextData(i2c, LL_I2C_ACK);
+	cfg->target_cfgs[data->num_targets_attached] = cfg;
+	data->num_targets_attached ++;
 
 	return 0;
 }
 
 int i2c_mik32_target_unregister(const struct device *dev, struct i2c_target_config *config)
 {
-	const struct i2c_stm32_config *cfg = dev->config;
-	struct i2c_stm32_data *data = dev->data;
-	I2C_TypeDef *i2c = cfg->i2c;
+	return 0;
+}
 
-	if (!data->slave_attached) {
-		return -EINVAL;
-	}
+int i2c_mik32_target_register_all(const struct device *dev)
+{
+	LOG_DBG("Register all targets");
+	const struct i2c_mik32_config *cfg = dev->config;
+	struct i2c_mik32_data *data = dev->data;
+	I2C_TypeDef *i2c = cfg->regs;
 
-	if (data->master_active) {
+	// uint32_t bitrate_cfg;
+	// int ret;
+
+	if (data->controller_active) {
+		LOG_ERR("Refusing to register target: controller is active");
 		return -EBUSY;
 	}
 
-	//mik32_i2c_disable_transfer_interrupts(dev);
+	if (data->num_targets_attached > 0) {
+		LOG_ERR("Refusing to register targets: all DTS targets are already attached");
+		return -EBUSY;
+	}
 
-	/* if (!data->smbalert_active) { */
-	/* 	I2C_Disable(i2c); */
-	/* } */
+	for (data->num_targets_attached = 0;
+	     data->num_targets_attached < cfg->max_targets;) {
+		i2c_target_driver_register(cfg->target_devs[data->num_targets_attached]);
+	}
 
-	data->slave_attached = false;
+	if (data->num_targets_attached > 0) {
+		LL_I2C_Enable(i2c);
 
-	LOG_DBG("i2c: slave unregistered");
+		uint8_t addr = DEFAULT_DEVICE_ADDR;
+		uint32_t mask = DEFAULT_OAR2_MASK;
+		if ((cfg->oar2_base <= 0x7f) && (cfg->oar2_base > 0)) {
+			addr = cfg->oar2_base;
+		}
+		addr <<= 1;
+
+		if ((cfg->oar2_mask <= 7) &&
+		    (cfg->oar2_mask >= 0)) {
+			mask = cfg->oar2_mask;
+		}
+
+		LOG_DBG("OAR2 addr: %02x, mask: %08x", addr, mask);
+		i2c_set_oar2(i2c, mask, addr);
+		i2c_enable_oar2(i2c);
+#endif
+	}
+	LOG_DBG("All targets registered");
+
+	return 0;
+}
+
+int i2c_stm32_target_unregister_all(const struct device *dev)
+{
+	const struct i2c_stm32_config *cfg = dev->config;
+	struct i2c_stm32_data *data = dev->data;
+	I2C_TypeDef *i2c = cfg->regs;
+
+	if (data->num_targets_attached <= 0) {
+		return -EINVAL;
+	}
+
+	if (data->controller_active) {
+		return -EBUSY;
+	}
+
+	for (int i = 0; i < data->num_targets_attached; i++) {
+		i2c_target_driver_unregister(cfg->target_devs[i]);
+	}
+
+	data->num_targets_attached = 0;
+
+	i2c_disable_oar2(i2c);
+
+	i2c_disable(i2c);
+
+	LOG_DBG("All targets unregistered");
 
 	return 0;
 }
@@ -174,158 +222,240 @@ static inline void i2c_mik32_disable_interrupts(const struct i2c_mik32_config  *
 
 static void i2c_mik32_isr(const void *param)
 {
-  const struct device *dev = (const struct device *)param;
+	const struct device *dev = (const struct device *)param;
 	struct i2c_mik32_data *data = dev->data;
 	const struct i2c_mik32_config *cfg = dev->config;
 
-	uint32_t int_mask = cfg->regs->CR1 & I2C_INTMASK; /* разрешенные прерывания  */
-	uint32_t status = cfg->regs->ISR; /* Флаги */
+	if (data->master_active) {
+		uint32_t int_mask = cfg->regs->CR1 & I2C_INTMASK; /* разрешенные прерывания	 */
+		uint32_t status = cfg->regs->ISR; /* Флаги */
 
-	if ((status & I2C_ISR_ADDR_M) && (int_mask & I2C_CR1_ADDRIE_M)) {
-		if (cfg->regs->CR1 & I2C_CR1_SBC_M) {
-			cfg->regs->CR2 &= ~I2C_CR2_NBYTES_M;
-			cfg->regs->CR2 |= I2C_CR2_NBYTES(0x1);
+		if ((status & I2C_ISR_ADDR_M) && (int_mask & I2C_CR1_ADDRIE_M)) {
+			if (cfg->regs->CR1 & I2C_CR1_SBC_M) {
+				cfg->regs->CR2 &= ~I2C_CR2_NBYTES_M;
+				cfg->regs->CR2 |= I2C_CR2_NBYTES(0x1);
+			}
+
+			/* Сброс флага ADDR */
+			cfg->regs->ICR |= I2C_ICR_ADDRCF_M;
 		}
 
-		/* Сброс флага ADDR */
-		cfg->regs->ICR |= I2C_ICR_ADDRCF_M;
-	}
-
-	if ((status & (I2C_ISR_BERR_M | I2C_ISR_ARLO_M | I2C_ISR_OVR_M)) && (int_mask & I2C_CR1_ERRIE_M)) {
-		/* Выключить все прерывания I2C */
-		i2c_mik32_disable_interrupts(cfg);
-		/* Сброс I2C */
-		if (status & I2C_ISR_BERR_M) {
-			data->errs |= I2C_ERROR_BERR;
-		}
-		if (status & I2C_ISR_ARLO_M) {
-			data->errs |= I2C_ERROR_ARLO;			
-		}
-		if (status & I2C_ISR_OVR_M) {
-			data->errs |= I2C_ERROR_OVR;			
-		}
-		cfg->regs->CR1 &= ~I2C_CR1_PE_M;
-		cfg->regs->CR1 |= I2C_CR1_PE_M;
-	}
-
-	if ((status & I2C_ISR_NACKF_M) && (int_mask & I2C_CR1_NACKIE_M)) {
-		/* Выключить все прерывания I2C */
-		i2c_mik32_disable_interrupts(cfg);
-		/* Сброс I2C */
-		data->errs = I2C_ERROR_NACK;
-		cfg->regs->CR1 &= ~I2C_CR1_PE_M;
-		cfg->regs->CR1 |= I2C_CR1_PE_M;
-	}
-
-	if ((status & I2C_ISR_STOPF_M) && (int_mask & I2C_CR1_STOPIE_M)) {
-		/* Сброс содержимого TXDR */
-		cfg->regs->ISR |= I2C_ISR_TXE_M;
-		/* Сброс флага детектирования STOP на шине */
-		cfg->regs->ICR |= I2C_ICR_STOPCF_M;
-
-		cfg->regs->CR2 |= I2C_CR2_STOP_M;
-		k_sem_give(&data->sync_sem);
-	}
-
-	if ((status & I2C_ISR_TXIS_M) && (int_mask & I2C_CR1_TXIE_M)) {
-		data->xfered_len++;
-		if ((data->xfered_len > data->xfer_len) && (data->master_active == false))
-		{
+		if ((status & (I2C_ISR_BERR_M | I2C_ISR_ARLO_M | I2C_ISR_OVR_M)) && (int_mask & I2C_CR1_ERRIE_M)) {
+			/* Выключить все прерывания I2C */
+			i2c_mik32_disable_interrupts(cfg);
+			/* Сброс I2C */
+			if (status & I2C_ISR_BERR_M) {
+				data->errs |= I2C_ERROR_BERR;
+			}
+			if (status & I2C_ISR_ARLO_M) {
+				data->errs |= I2C_ERROR_ARLO;
+			}
+			if (status & I2C_ISR_OVR_M) {
+				data->errs |= I2C_ERROR_OVR;
+			}
 			cfg->regs->CR1 &= ~I2C_CR1_PE_M;
 			cfg->regs->CR1 |= I2C_CR1_PE_M;
+		}
+
+		if ((status & I2C_ISR_NACKF_M) && (int_mask & I2C_CR1_NACKIE_M)) {
+			/* Выключить все прерывания I2C */
+			i2c_mik32_disable_interrupts(cfg);
+			/* Сброс I2C */
+			data->errs = I2C_ERROR_NACK;
+			cfg->regs->CR1 &= ~I2C_CR1_PE_M;
+			cfg->regs->CR1 |= I2C_CR1_PE_M;
+		}
+
+		if ((status & I2C_ISR_STOPF_M) && (int_mask & I2C_CR1_STOPIE_M)) {
+			/* Сброс содержимого TXDR */
+			cfg->regs->ISR |= I2C_ISR_TXE_M;
+			/* Сброс флага детектирования STOP на шине */
+			cfg->regs->ICR |= I2C_ICR_STOPCF_M;
 
 			cfg->regs->CR2 |= I2C_CR2_STOP_M;
 			k_sem_give(&data->sync_sem);
 		}
-		else
-		{
-			cfg->regs->TXDR = *((uint8_t *)data->current->buf);
+
+		if ((status & I2C_ISR_TXIS_M) && (int_mask & I2C_CR1_TXIE_M)) {
+			data->xfered_len++;
+			if ((data->xfered_len > data->xfer_len) && (data->master_active == false))
+			{
+				cfg->regs->CR1 &= ~I2C_CR1_PE_M;
+				cfg->regs->CR1 |= I2C_CR1_PE_M;
+
+				cfg->regs->CR2 |= I2C_CR2_STOP_M;
+				k_sem_give(&data->sync_sem);
+			}
+			else
+			{
+				cfg->regs->TXDR = *((uint8_t *)data->current->buf);
+				data->current->buf++;
+				if (data->xfered_len == data->xfer_len)
+				{
+					cfg->regs->CR2 |= I2C_CR2_STOP_M;
+					k_sem_give(&data->sync_sem);
+				}
+			}
+		}
+
+		if ((status & I2C_ISR_RXNE_M) && (int_mask & I2C_CR1_RXIE_M)) {
+			*((uint8_t *)data->current->buf) = (uint8_t)cfg->regs->RXDR;
+
+			if (cfg->regs->CR1 & I2C_CR1_SBC_M)
+			{
+				cfg->regs->CR2 &= ~I2C_CR2_NACK_M; /* Формирование ACK */
+			}
+
 			data->current->buf++;
+			data->xfered_len++;
 			if (data->xfered_len == data->xfer_len)
 			{
 				cfg->regs->CR2 |= I2C_CR2_STOP_M;
 				k_sem_give(&data->sync_sem);
 			}
 		}
-	}
 
-	if ((status & I2C_ISR_RXNE_M) && (int_mask & I2C_CR1_RXIE_M)) {
-		*((uint8_t *)data->current->buf) = (uint8_t)cfg->regs->RXDR;
-
-		if (cfg->regs->CR1 & I2C_CR1_SBC_M)
-		{
-			cfg->regs->CR2 &= ~I2C_CR2_NACK_M; /* Формирование ACK */
-		}
-
-		data->current->buf++;
-		data->xfered_len++;
-		if (data->xfered_len == data->xfer_len)
-		{
-			cfg->regs->CR2 |= I2C_CR2_STOP_M;
-			k_sem_give(&data->sync_sem);
-		}
-	}
-
-	if ((status & I2C_ISR_TCR_M) && (int_mask & I2C_CR1_TCIE_M)) {
-		if (cfg->regs->CR1 & I2C_CR1_SBC_M)
-		{
-			*((uint8_t *)data->current->buf) = (uint8_t)cfg->regs->RXDR;
-			data->current->buf++;
-			data->xfered_len++;
-
-			cfg->regs->CR2 &= ~I2C_CR2_NACK_M; /* Формирование ACK */
-			/* Выключить все прерывания I2C */
-			i2c_mik32_disable_interrupts(cfg);
-			/* Сброс I2C */
-			cfg->regs->CR1 &= ~I2C_CR1_PE_M;
-			cfg->regs->CR1 |= I2C_CR1_PE_M;
-
-			if (data->xfered_len < data->xfer_len)
+		if ((status & I2C_ISR_TCR_M) && (int_mask & I2C_CR1_TCIE_M)) {
+			if (cfg->regs->CR1 & I2C_CR1_SBC_M)
 			{
-				cfg->regs->CR2 &= ~I2C_CR2_NBYTES_M;
-				cfg->regs->CR2 |= I2C_CR2_NBYTES(0x1);
+				*((uint8_t *)data->current->buf) = (uint8_t)cfg->regs->RXDR;
+				data->current->buf++;
+				data->xfered_len++;
+
+				cfg->regs->CR2 &= ~I2C_CR2_NACK_M; /* Формирование ACK */
+				/* Выключить все прерывания I2C */
+				i2c_mik32_disable_interrupts(cfg);
+				/* Сброс I2C */
+				cfg->regs->CR1 &= ~I2C_CR1_PE_M;
+				cfg->regs->CR1 |= I2C_CR1_PE_M;
+
+				if (data->xfered_len < data->xfer_len)
+				{
+					cfg->regs->CR2 &= ~I2C_CR2_NBYTES_M;
+					cfg->regs->CR2 |= I2C_CR2_NBYTES(0x1);
+				}
+				else
+				{
+					cfg->regs->CR1 &= ~(I2C_CR1_TXIE_M);
+					cfg->regs->CR2 |= I2C_CR2_STOP_M;
+					k_sem_give(&data->sync_sem);
+				}
 			}
 			else
 			{
-				cfg->regs->CR1 &= ~(I2C_CR1_TXIE_M);
-				cfg->regs->CR2 |= I2C_CR2_STOP_M;
-				k_sem_give(&data->sync_sem);
+				cfg->regs->CR2 &= ~I2C_CR2_NBYTES_M;
+				/* Подготовка перед отправкой */
+
+				if ((data->xfer_len - data->xfered_len) <= I2C_NBYTE_MAX)
+				{
+					cfg->regs->CR2 &= ~I2C_CR2_NBYTES_M;
+					cfg->regs->CR2 |= I2C_CR2_NBYTES(data->xfer_len - data->xfered_len);
+					cfg->regs->CR2 &= ~I2C_CR2_RELOAD_M;
+					cfg->regs->CR2 &= ~I2C_CR2_AUTOEND_M;
+					//regs->CR2 |= I2C_AUTOEND_DISABLE << I2C_CR2_AUTOEND_S;
+				}
+				else /* DataSize > 255 */
+				{
+					cfg->regs->CR2 &= ~I2C_CR2_NBYTES_M;
+					cfg->regs->CR2 |= I2C_CR2_NBYTES(I2C_NBYTE_MAX);
+					/* При RELOAD = 1 AUTOEND игнорируется */
+					cfg->regs->CR2 |= I2C_CR2_RELOAD_M;
+				}
 			}
 		}
-		else
+
+		if ((status & I2C_ISR_TC_M) && (int_mask & I2C_CR1_TCIE_M)) {
+			cfg->regs->CR1 &= ~(I2C_CR1_TXIE_M);
+			cfg->regs->CR2 |= I2C_CR2_STOP_M;
+			k_sem_give(&data->sync_sem);
+		}
+
+		if (data->errs != 0U) {
+			/* Enter stop condition */
+			cfg->regs->CR2 |= I2C_CR2_STOP_M;
+
+			k_sem_give(&data->sync_sem);
+		}
+	} else {
+		uint32_t int_mask = 0xffffffff;//cfg->regs->CR1 & I2C_INTMASK; /* разрешенные прерывания	*/
+		struct i2c_target_config *slave_cfg;
+		const struct i2c_target_callbacks *slave_cb =
+			data->slave_cfg->callbacks;
+
+		if ((cfg->regs->ISR & I2C_ISR_STOPF_M) && (int_mask & I2C_CR1_STOPIE_M)) {
+
+			cfg->regs->ISR |= I2C_ISR_TXE_M;
+			slave_cb->stop(data->slave_cfg);
+			/* Сброс флага детектирования STOP на шине */
+			cfg->regs->ICR |= I2C_ICR_STOPCF_M;
+		}
+
+		if ((cfg->regs->ISR & I2C_ISR_ADDR_M) && (int_mask & I2C_CR1_ADDRIE_M)) {
+			ret = i2c_addr(dev);
+			if (ret == 0) {
+				i2c_mik32_disable_interrupts(p);
+				cfg->regs->CR1 &= ~I2C_CR1_PE_M;
+				cfg->regs->CR1 |= I2C_CR1_PE_M;
+				i2c_mik32_enable_interrupts(p);
+			}
+
+			if (cfg->regs->ISR & I2C_ISR_DIR_M) {
+				cfg->regs->ISR |= I2C_ISR_TXE_M;// | I2C_ISR_TXIS_M;
+				i2c_tx(dev);
+			} else {
+				cfg->regs->CR2 &= ~I2C_CR2_NBYTES_M;
+				cfg->regs->CR2 |= I2C_CR2_NBYTES(1);
+			}
+
+			/* /\* Сброс флага ADDR *\/ */
+			cfg->regs->ICR |= I2C_ICR_ADDRCF_M;
+		}
+
+		if ((cfg->regs->ISR & I2C_ISR_TXIS_M) && (int_mask & I2C_CR1_TXIE_M)) {
+			if (i2c_tx(dev)) {
+				//pass
+			} else {
+				//data->state = I2C_STATE_END;
+			}
+		}
+
+		if ((cfg->regs->ISR & I2C_ISR_RXNE_M) && (int_mask & I2C_CR1_RXIE_M)) {
+			ret = i2c_rx(dev);
+			if (ret) {
+				i2c_slave_ack(p);
+			} else {
+				i2c_slave_nack(p);
+				cfg->regs->CR1 &= ~I2C_CR1_PE_M;
+				cfg->regs->CR1 |= I2C_CR1_PE_M;
+			}
+		}
+
+		if ((cfg->regs->ISR & I2C_ISR_TCR_M) && (int_mask & I2C_CR1_TCIE_M)) {
+			ret = i2c_rx(dev);
+			if (ret) {
+				i2c_slave_ack(p);
+			} else {
+				i2c_slave_nack(p);
+				cfg->regs->CR1 &= ~I2C_CR1_PE_M;
+				cfg->regs->CR1 |= I2C_CR1_PE_M;
+			}
+		}
+
+		if ((cfg->regs->ISR & I2C_ISR_TC_M) && (int_mask & I2C_CR1_TCIE_M)) {
+		}
+
+		if ((cfg->regs->ISR & (I2C_ISR_BERR_M | I2C_ISR_ARLO_M | I2C_ISR_OVR_M)) && (int_mask & I2C_CR1_ERRIE_M)) {
+			i2c_mik32_disable_interrupts(p);
+			/* Сброс I2C */
+			cfg->regs->CR1 &= ~I2C_CR1_PE_M;
+			cfg->regs->CR1 |= I2C_CR1_PE_M;
+		}
+
+		if ((cfg->regs->ISR & I2C_ISR_NACKF_M) && (int_mask & I2C_CR1_NACKIE_M))
 		{
-			cfg->regs->CR2 &= ~I2C_CR2_NBYTES_M;
-			/* Подготовка перед отправкой */
-		
-			if ((data->xfer_len - data->xfered_len) <= I2C_NBYTE_MAX)
-			{
-				cfg->regs->CR2 &= ~I2C_CR2_NBYTES_M;
-				cfg->regs->CR2 |= I2C_CR2_NBYTES(data->xfer_len - data->xfered_len);
-				cfg->regs->CR2 &= ~I2C_CR2_RELOAD_M;
-				cfg->regs->CR2 &= ~I2C_CR2_AUTOEND_M;
-				//regs->CR2 |= I2C_AUTOEND_DISABLE << I2C_CR2_AUTOEND_S;
-			}
-			else /* DataSize > 255 */
-			{
-				cfg->regs->CR2 &= ~I2C_CR2_NBYTES_M;
-				cfg->regs->CR2 |= I2C_CR2_NBYTES(I2C_NBYTE_MAX);
-				/* При RELOAD = 1 AUTOEND игнорируется */
-				cfg->regs->CR2 |= I2C_CR2_RELOAD_M;
-			}
+			TR('n');
+			cfg->regs->ICR |= I2C_ICR_NACKCF_M;
 		}
-	}
-
-	if ((status & I2C_ISR_TC_M) && (int_mask & I2C_CR1_TCIE_M)) {
-		cfg->regs->CR1 &= ~(I2C_CR1_TXIE_M);
-		cfg->regs->CR2 |= I2C_CR2_STOP_M;
-		k_sem_give(&data->sync_sem);
-	}
-
-	if (data->errs != 0U) {
-		/* Enter stop condition */
-		cfg->regs->CR2 |= I2C_CR2_STOP_M;
-
-		k_sem_give(&data->sync_sem);
 	}
 }
 
